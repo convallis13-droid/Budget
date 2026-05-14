@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#FAFAFA" />
+  <title>가족회의 가계부 · 유리 &amp; 현우</title>
+
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Firebase SDK (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    html, body { margin: 0; padding: 0; }
+    body { font-family: "Pretendard Variable", sans-serif; }
+    #root { min-height: 100vh; }
+    input, button { font-family: inherit; }
+    .loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #FAFAFA; color: #71717A; font-size: 14px; font-weight: 600; letter-spacing: 0.5px; }
+  </style>
+</head>
+<body>
+  <div id="root"><div class="loading">불러오는 중…</div></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useMemo, useEffect, useRef } = React;
+
+// ============== Firebase 설정 ==============
+// ↓↓↓ 여기에 본인의 Firebase 프로젝트 설정을 붙여넣으세요 ↓↓↓
+const firebaseConfig = {
+  apiKey: "AIzaSyAsgrQsSwkNlSuUuznqcs1IKPkA09IgHMM",
+  authDomain: "hwyr-family-meeting.firebaseapp.com",
+  projectId: "hwyr-family-meeting",
+  storageBucket: "hwyr-family-meeting.firebasestorage.app",
+  messagingSenderId: "1066807212091",
+  appId: "1:1066807212091:web:8862745aefa829a3f9c41e"
+};
+// ↑↑↑ 여기까지 ↑↑↑
+
+// 가계부 데이터를 저장할 문서 경로. 부부가 같은 데이터를 보려면 동일하게 유지하세요.
+// 만약 별도의 가계부를 운영하고 싶다면 'shared' 부분을 바꾸세요. (예: 'my-budget-2026')
+const DOC_PATH_COLLECTION = 'budgets';
+const DOC_PATH_DOC = 'shared';
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+// 익명 로그인 (페이지가 열리면 자동으로 실행)
+const authReady = auth.signInAnonymously().catch((e) => {
+  console.error('Firebase 익명 로그인 실패:', e);
+  alert('Firebase 인증 실패. Firebase 콘솔에서 Anonymous 로그인을 활성화했는지 확인하세요.');
+});
+
+const docRef = () => db.collection(DOC_PATH_COLLECTION).doc(DOC_PATH_DOC);
+
+
+// ============== 아이콘 ==============
+const Icon = ({ size = 16, strokeWidth = 2, children, style }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', ...style }}>
+    {children}
+  </svg>
+);
+const ChevronLeft  = (p) => <Icon {...p}><path d="m15 18-6-6 6-6"/></Icon>;
+const ChevronRight = (p) => <Icon {...p}><path d="m9 18 6-6-6-6"/></Icon>;
+const ChevronDown  = (p) => <Icon {...p}><path d="m6 9 6 6 6-6"/></Icon>;
+const Check        = (p) => <Icon {...p}><path d="M20 6 9 17l-5-5"/></Icon>;
+const TrendingUp   = (p) => <Icon {...p}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></Icon>;
+const TrendingDown = (p) => <Icon {...p}><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></Icon>;
+const Plus         = (p) => <Icon {...p}><path d="M5 12h14"/><path d="M12 5v14"/></Icon>;
+const X            = (p) => <Icon {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></Icon>;
+const Sun          = (p) => <Icon {...p}><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></Icon>;
+const Moon         = (p) => <Icon {...p}><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></Icon>;
+
+// ============== 상수 ==============
+const STORAGE_KEY = 'family-budget-v2';
+const STEPS = [
+  { id: 'intro', label: '시작' },
+  { id: 'income', label: '수입' },
+  { id: 'cards', label: '지출 정산' },
+  { id: 'utilities', label: '공과금' },
+  { id: 'food', label: '식비' },
+  { id: 'yuri', label: '유리 정산' },
+  { id: 'unexpected', label: '예상 외 지출' },
+  { id: 'review', label: '요약' },
+];
+
+const COLORS = {
+  light: {
+    intro: { main: '#18181B', soft: '#F4F4F5' },
+    income: { main: '#059669', soft: '#D1FAE5' },
+    cards: { main: '#BE185D', soft: '#FCE7F3' },
+    utilities: { main: '#0284C7', soft: '#DBEAFE' },
+    food: { main: '#EA580C', soft: '#FFEDD5' },
+    yuri: { main: '#9333EA', soft: '#F3E8FF' },
+    unexpected: { main: '#DC2626', soft: '#FEE2E2' },
+    review: { main: '#18181B', soft: '#F4F4F5' },
+  },
+  dark: {
+    intro: { main: '#FAFAFA', soft: '#1F1F23' },
+    income: { main: '#34D399', soft: '#0F2A1F' },
+    cards: { main: '#F472B6', soft: '#2E1424' },
+    utilities: { main: '#38BDF8', soft: '#0F2236' },
+    food: { main: '#FB923C', soft: '#2E1B0F' },
+    yuri: { main: '#C084FC', soft: '#241432' },
+    unexpected: { main: '#F87171', soft: '#2D1414' },
+    review: { main: '#FAFAFA', soft: '#1F1F23' },
+  },
+};
+
+const THEMES = {
+  light: { bg: '#FAFAFA', card: '#FFFFFF', cardAlt: '#F4F4F5', text: '#09090B', textMuted: '#52525B', textFaint: '#A1A1AA', border: '#E4E4E7', borderSoft: '#F1F1F4', inputBg: '#F4F4F5', inputBorder: '#E4E4E7', invertBg: '#09090B', invertText: '#FAFAFA', invertBorder: 'rgba(250,250,250,0.12)', diffUp: '#DC2626', diffDown: '#059669' },
+  dark: { bg: '#0A0A0C', card: '#18181B', cardAlt: '#1F1F23', text: '#FAFAFA', textMuted: '#A1A1AA', textFaint: '#71717A', border: '#27272A', borderSoft: '#1F1F23', inputBg: '#1F1F23', inputBorder: '#2D2D32', invertBg: '#FAFAFA', invertText: '#09090B', invertBorder: 'rgba(9,9,11,0.12)', diffUp: '#F87171', diffDown: '#34D399' },
+};
+
+const FIELDS = {
+  income: [
+    { key: 'yuri', label: '유리 월급', sub: '매월 25일 입금' },
+    { key: 'hyunwoo', label: '현우 월급', sub: '매월 28일 입금' },
+    { type: 'dynamicGroup', key: 'etc', listKey: 'etcList', label: '기타 수입', placeholder: '항목 (예: 보너스)' },
+  ],
+  cards: [
+    { key: 'hyundai_naver', label: '현대 NAVER' },
+    { key: 'kookmin_coupang', label: '국민 쿠팡' },
+    { key: 'samsung', label: '삼성카드' },
+    { key: 'lotte', label: '롯데카드' },
+    { key: 'cash', label: '현금' },
+    { key: 'minus', label: '마이너스', sub: '카드 지출했으나 현금으로 돌려받은 내역', subtract: true },
+  ],
+  utilities: [
+    { key: 'mgmt', label: '관리비' },
+    { key: 'gas', label: '가스비' },
+    { key: 'rent', label: '월세' },
+    { key: 'lh', label: 'LH' },
+  ],
+  food: [
+    { type: 'dynamicGroup', key: 'delivery', listKey: 'deliveryList', label: '배달', placeholder: '메모 (선택)' },
+    { type: 'dynamicGroup', key: 'dining', listKey: 'diningList', label: '외식', placeholder: '메모 (선택)' },
+    { type: 'dynamicGroup', key: 'groceries', listKey: 'groceriesList', label: '집밥 (장보기)', placeholder: '메모 (선택)' },
+  ],
+  yuri: [
+    { type: 'group', key: 'insurance', label: '보험', children: [
+      { key: 'ins_yuri_total', label: '유리종합' },
+      { key: 'ins_yuri_teeth', label: '유리치아' },
+      { key: 'ins_baby_total', label: '태아종합' },
+      { key: 'ins_baby_silbi', label: '태아실비' },
+    ]},
+    { key: 'lotte_happiness', label: '롯데 (국민행복카드)' },
+    { key: 'telecom', label: '통신' },
+    { key: 'savings', label: '청약' },
+    { key: 'transit', label: '교통' },
+    { type: 'dynamicGroup', key: 'extras', listKey: 'extraList', label: '기타 항목', placeholder: '항목 이름' },
+  ],
+};
+
+// ============== 포맷터 ==============
+const fmt = (n) => n === 0 ? '0' : Math.round(n).toLocaleString('ko-KR');
+const fmtFull = (n) => {
+  if (!n) return '0원';
+  const totalMan = Math.round(n / 10000);
+  const auk = Math.floor(totalMan / 10000);
+  const cheon = Math.floor((totalMan % 10000) / 1000);
+  const man = totalMan % 1000;
+  if (auk === 0 && cheon === 0) return `${totalMan.toLocaleString('ko-KR')}만원`;
+  if (auk === 0) return man === 0 ? `${cheon}천만원` : `${cheon}천 ${man}만원`;
+  if (cheon === 0 && man === 0) return `${auk}억원`;
+  if (man === 0) return `${auk}억 ${cheon}천만원`;
+  if (cheon === 0) return `${auk}억 ${man}만원`;
+  return `${auk}억 ${cheon}천 ${man}만원`;
+};
+const fmtMCH = (n) => {
+  if (!n) return '0원';
+  const man = Math.floor(n / 10000);
+  const rem = n % 10000;
+  if (man === 0) return `${rem.toLocaleString('ko-KR')}원`;
+  if (rem === 0) return `${man.toLocaleString('ko-KR')}만원`;
+  return `${man.toLocaleString('ko-KR')}만 ${rem.toLocaleString('ko-KR')}원`;
+};
+const fmtShort = (n) => {
+  if (!n) return '0';
+  const m = n / 10000;
+  if (m >= 10000) return `${(m/10000).toFixed(1)}억`;
+  return `${Math.round(m).toLocaleString('ko-KR')}만`;
+};
+
+// ============== 월 키 유틸 ==============
+const monthKey = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
+const parseKey = (k) => { const [y, m] = k.split('-').map(Number); return { year: y, month: m }; };
+const shiftMonth = (k, delta) => {
+  const { year, month } = parseKey(k);
+  const total = year * 12 + (month - 1) + delta;
+  return monthKey(Math.floor(total / 12), (total % 12) + 1);
+};
+const monthLabel = (k) => { const { year, month } = parseKey(k); return `${year}년 ${month}월`; };
+const todayKey = () => { const d = new Date(); return monthKey(d.getFullYear(), d.getMonth() + 1); };
+
+// 빈 월 템플릿
+const emptyMonth = () => ({
+  income: { yuri: 0, hyunwoo: 0, etcList: [] },
+  cards: { hyundai_naver: 0, kookmin_coupang: 0, samsung: 0, lotte: 0, cash: 0, minus: 0 },
+  utilities: { mgmt: 0, gas: 0, rent: 0, lh: 0 },
+  food: { deliveryList: [], diningList: [], groceriesList: [] },
+  yuri: {
+    ins_yuri_total: 0, ins_yuri_teeth: 0, ins_baby_total: 0, ins_baby_silbi: 0,
+    lotte_happiness: 0, telecom: 0, savings: 0, transit: 0,
+    extraList: [],
+  },
+  unexpected: [],
+  finalized: false,
+});
+
+// ============== 저장소 (Firestore 기반) ==============
+// 로컬은 더 이상 사용하지 않습니다. 모든 데이터는 Firestore에 저장되어 모든 기기 간 동기화됩니다.
+const storage = {
+  _saveTimer: null,
+  _pending: null,
+  _lastWrittenAt: 0,
+  _onStatus: () => {},
+  setStatusListener(fn) { this._onStatus = fn || (() => {}); },
+
+  // 변경사항을 600ms 디바운스 후 Firestore에 저장
+  save(data) {
+    this._pending = data;
+    this._onStatus('syncing');
+    clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(async () => {
+      try {
+        await authReady;
+        const ts = Date.now();
+        const payload = { ...this._pending, _updatedAt: ts };
+        this._lastWrittenAt = ts;
+        await docRef().set(payload);
+        this._onStatus('saved');
+      } catch (e) {
+        console.error('Firestore 저장 실패:', e);
+        this._onStatus('error');
+      }
+    }, 600);
+  },
+
+  // 실시간 구독. 다른 기기에서 변경되면 callback이 호출됩니다.
+  // 본인이 방금 쓴 데이터는 timestamp가 일치하므로 echo로 인식해서 무시합니다.
+  subscribe(onData, onError) {
+    let isFirst = true;
+    return docRef().onSnapshot(
+      (snap) => {
+        const raw = snap.exists ? snap.data() : null;
+        // 본인의 echo는 무시 (이미 state에 반영되어 있음). 단, 첫 로드는 반영.
+        if (!isFirst && raw && raw._updatedAt === this._lastWrittenAt) {
+          return;
+        }
+        const merged = { months: {}, totalAssets: 0, ...(raw || {}) };
+        isFirst = false;
+        onData(merged);
+      },
+      (err) => {
+        console.error('Firestore 구독 오류:', err);
+        if (onError) onError(err);
+      }
+    );
+  },
+};
+
+// 카테고리 합계 (숫자 + 배열 항목 모두 처리)
+const sum = (obj) => {
+  let total = 0;
+  for (const v of Object.values(obj || {})) {
+    if (typeof v === 'number') total += v;
+    else if (Array.isArray(v)) total += v.reduce((a, b) => a + (b.amount || 0), 0);
+  }
+  return total;
+};
+const sumKeys = (obj, keys) => keys.reduce((a, k) => a + (obj?.[k] || 0), 0);
+const sumList = (list) => (list || []).reduce((a, b) => a + (b.amount || 0), 0);
+
+// 지출 정산 합계: 카드 4개 + 현금 − 마이너스(현금 환급분)
+const sumCards = (m) => {
+  const c = (m && m.cards) || {};
+  return (c.hyundai_naver || 0) + (c.kookmin_coupang || 0) + (c.samsung || 0) + (c.lotte || 0) + (c.cash || 0) - (c.minus || 0);
+};
+
+// 총 지출 공식: 지출 정산(카드+현금−마이너스) + 월세 + LH + 유리 정산 합계
+const computeExpense = (m) => {
+  if (!m) return 0;
+  return sumCards(m) + (m.utilities?.rent || 0) + (m.utilities?.lh || 0) + sum(m.yuri);
+};
+
+// ============== BarChart (SVG 막대 그래프) ==============
+function BarChart({ data, color, T, isMobile, sans, allowNegative }) {
+  if (!data || data.length === 0) return null;
+  const W = isMobile ? 340 : 580;
+  const H = isMobile ? 180 : 220;
+  const PAD = { top: 24, right: 10, bottom: 28, left: 10 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top - PAD.bottom;
+  const barCount = data.length;
+  const barGap = barCount > 8 ? (isMobile ? 3 : 6) : (isMobile ? 6 : 10);
+  const barWidth = Math.max((chartW - (barCount - 1) * barGap) / barCount, 4);
+
+  const absMax = Math.max(...data.map(d => Math.abs(d.value)), 1);
+  const hasNeg = allowNegative && data.some(d => d.value < 0);
+  const zeroY = hasNeg ? PAD.top + chartH / 2 : PAD.top + chartH;
+  const scale = (val) => (Math.abs(val) / absMax) * (hasNeg ? chartH / 2 : chartH);
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
+      {hasNeg && (
+        <line x1={PAD.left} y1={zeroY} x2={W - PAD.right} y2={zeroY} stroke={T.border} strokeWidth={1} strokeDasharray="2 3" />
+      )}
+      {data.map((d, i) => {
+        const x = PAD.left + i * (barWidth + barGap);
+        const h = scale(d.value);
+        const isNeg = d.value < 0;
+        const y = isNeg ? zeroY : zeroY - h;
+        const barColor = isNeg ? T.diffUp : color.main;
+        const labelY = isNeg ? y + h + 12 : y - 6;
+        const showLabel = d.value !== 0 && h > 10;
+        const monthNum = parseKey(d.month).month;
+        return (
+          <g key={d.month}>
+            <rect x={x} y={y} width={barWidth} height={Math.max(h, 1.5)} fill={barColor} rx={3} opacity={d.value === 0 ? 0.15 : 1} />
+            {showLabel && (
+              <text x={x + barWidth/2} y={labelY} textAnchor="middle" fontSize={isMobile ? 9 : 10} fill={T.textMuted} fontFamily={sans} fontWeight={600} fontVariantNumeric="tabular-nums">
+                {(isNeg ? '−' : '') + fmtShort(Math.abs(d.value))}
+              </text>
+            )}
+            <text x={x + barWidth/2} y={PAD.top + chartH + 18} textAnchor="middle" fontSize={isMobile ? 9 : 10} fill={T.textFaint} fontFamily={sans} fontWeight={500}>
+              {monthNum}월
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ============== ReviewBlock ==============
+function ReviewBlock({ label, total, prev, items, flagged, color, T, sans }) {
+  const diff = total - prev;
+  const c = color || { main: T.text, soft: T.cardAlt };
+  return (
+    <div style={{ paddingBottom: 18, marginBottom: 18, borderBottom: `1px solid ${T.borderSoft}`, position: 'relative', paddingLeft: 14, fontFamily: sans }}>
+      <div style={{ position: 'absolute', left: 0, top: 4, bottom: 22, width: 3, background: c.main, borderRadius: 999 }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+        <span style={{ fontSize: 12, letterSpacing: 0.3, color: c.main, fontWeight: 700, background: c.soft, padding: '4px 10px', borderRadius: 999 }}>
+          {label}{flagged && <span style={{ marginLeft: 4 }}>•</span>}
+        </span>
+        <span style={{ fontSize: 21, fontWeight: 700, color: T.text, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+          {fmt(total)}<span style={{ fontSize: 13, color: T.textMuted, marginLeft: 3, fontWeight: 600 }}>원</span>
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 14px', fontSize: 12, color: T.textMuted, fontWeight: 500 }}>
+        {items.filter(it => it.val > 0).map((it, i) => (
+          <span key={i}>
+            {it.label}{' '}
+            <span style={{ color: it.subtract ? T.diffUp : T.text, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+              {it.subtract ? '−' : ''}{fmtShort(it.val)}
+            </span>
+          </span>
+        ))}
+        {items.every(it => it.val === 0) && <span style={{ color: T.textFaint }}>입력 없음</span>}
+      </div>
+      {prev > 0 && (
+        <div style={{ marginTop: 7, fontSize: 11, color: diff > 0 ? T.diffUp : diff < 0 ? T.diffDown : T.textFaint, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+          전월 {fmt(prev)}원 · {diff === 0 ? '동일' : `${diff>0?'+':''}${fmt(diff)}원`}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============== 메인 컴포넌트 ==============
+function MonthlyWizard() {
+  const [allData, setAllData] = useState({ months: {}, totalAssets: 0 });
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'saved' | 'error'
+  const [currentKey, setCurrentKey] = useState(todayKey);
+  const [step, setStep] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
+  const [themeMode, setThemeMode] = useState(() => {
+    try { return localStorage.getItem('budget-theme') || 'light'; } catch { return 'light'; }
+  });
+  const [expandedGroups, setExpandedGroups] = useState({
+    insurance: true, etc: true, extras: true,
+    delivery: true, dining: true, groceries: true,
+  });
+  const [showSavedToast, setShowSavedToast] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [editingAssets, setEditingAssets] = useState(false);
+
+  // Firestore 실시간 구독 + 동기화 상태
+  useEffect(() => {
+    storage.setStatusListener(setSyncStatus);
+    const unsub = storage.subscribe(
+      (data) => {
+        setAllData(data);
+        setIsLoaded(true);
+      },
+      (err) => {
+        setIsLoaded(true); // 에러여도 일단 UI 진입
+        setSyncStatus('error');
+      }
+    );
+    return () => { try { unsub && unsub(); } catch (_) {} };
+  }, []);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  // 테마 저장
+  useEffect(() => {
+    try { localStorage.setItem('budget-theme', themeMode); } catch {}
+    document.body.style.background = THEMES[themeMode].bg;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', THEMES[themeMode].bg);
+  }, [themeMode]);
+
+  // 현재 월 데이터 초기화: 데이터 없으면 전월 데이터 복사해서 시드
+  // (Firestore 초기 로드 완료 후에만 실행 — 그렇지 않으면 빈 데이터로 덮어쓸 위험)
+  useEffect(() => {
+    if (!isLoaded) return;
+    setAllData(prev => {
+      if (prev.months[currentKey]) return prev;
+      const prevKey = shiftMonth(currentKey, -1);
+      const prevData = prev.months[prevKey];
+      const newMonth = prevData ? {
+        income: { yuri: prevData.income?.yuri || 0, hyunwoo: prevData.income?.hyunwoo || 0, etcList: [] },
+        cards: { ...(prevData.cards || {}) },
+        utilities: { ...prevData.utilities },
+        food: { deliveryList: [], diningList: [], groceriesList: [] },
+        yuri: { ...prevData.yuri, extraList: [] },
+        unexpected: [],
+        finalized: false,
+      } : emptyMonth();
+      const next = { ...prev, months: { ...prev.months, [currentKey]: newMonth } };
+      storage.save(next);
+      return next;
+    });
+  }, [currentKey, isLoaded]);
+
+  const T = THEMES[themeMode];
+  const C = COLORS[themeMode];
+  const data = allData.months[currentKey] || emptyMonth();
+  const prevKey = shiftMonth(currentKey, -1);
+  const prevData = allData.months[prevKey] || emptyMonth();
+  const isCurrentFinalized = !!data.finalized;
+  const totalAssets = allData.totalAssets || 0;
+
+  const updateTotalAssets = (val) => {
+    const num = val === '' ? 0 : parseInt(String(val).replace(/[^0-9]/g, ''), 10) || 0;
+    setAllData(prev => {
+      const next = { ...prev, totalAssets: num };
+      storage.save(next);
+      return next;
+    });
+  };
+
+  const updateMonth = (mutator) => {
+    setAllData(prev => {
+      const oldMonth = prev.months[currentKey] || emptyMonth();
+      const newMonth = { ...mutator(oldMonth), finalized: false };
+      const next = { ...prev, months: { ...prev.months, [currentKey]: newMonth } };
+      storage.save(next);
+      return next;
+    });
+  };
+
+  const updateField = (cat, key, val) => {
+    const num = val === '' ? 0 : parseInt(String(val).replace(/[^0-9]/g, ''), 10) || 0;
+    updateMonth(m => ({ ...m, [cat]: { ...(m[cat] || {}), [key]: num } }));
+  };
+  const toggleGroup = (key) => setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }));
+
+  // 동적 리스트 헬퍼 (income.etcList, yuri.extraList 등)
+  const addListItem = (cat, listKey) => updateMonth(m => ({
+    ...m,
+    [cat]: { ...(m[cat] || {}), [listKey]: [...(m[cat]?.[listKey] || []), { id: Date.now(), label: '', amount: 0 }] }
+  }));
+  const updateListItem = (cat, listKey, id, field, val) => updateMonth(m => ({
+    ...m,
+    [cat]: {
+      ...(m[cat] || {}),
+      [listKey]: (m[cat]?.[listKey] || []).map(it => it.id === id ? {
+        ...it,
+        [field]: field === 'amount' ? (parseInt(String(val).replace(/[^0-9]/g, ''), 10) || 0) : val
+      } : it),
+    },
+  }));
+  const removeListItem = (cat, listKey, id) => updateMonth(m => ({
+    ...m,
+    [cat]: { ...(m[cat] || {}), [listKey]: (m[cat]?.[listKey] || []).filter(it => it.id !== id) },
+  }));
+
+  const addUnexpected = () => updateMonth(m => ({ ...m, unexpected: [...(m.unexpected || []), { id: Date.now(), label: '', amount: 0 }] }));
+  const updateUnexpected = (id, field, val) => updateMonth(m => ({
+    ...m,
+    unexpected: (m.unexpected || []).map(u => u.id === id ? { ...u, [field]: field === 'amount' ? (parseInt(String(val).replace(/[^0-9]/g, ''), 10) || 0) : val } : u)
+  }));
+  const removeUnexpected = (id) => updateMonth(m => ({ ...m, unexpected: (m.unexpected || []).filter(u => u.id !== id) }));
+
+  const finalizeMonth = () => {
+    setAllData(prev => {
+      const next = { ...prev, months: { ...prev.months, [currentKey]: { ...prev.months[currentKey], finalized: true, savedAt: Date.now() } } };
+      storage.save(next);
+      return next;
+    });
+    setShowSavedToast(true);
+    setTimeout(() => setShowSavedToast(false), 2500);
+  };
+
+  const goPrevMonth = () => { setCurrentKey(k => shiftMonth(k, -1)); setStep(0); };
+  const goNextMonth = () => { setCurrentKey(k => shiftMonth(k, 1)); setStep(0); };
+
+  const totals = useMemo(() => {
+    const inc = sum(data.income);
+    const exp = computeExpense(data);
+    return { inc, exp, balance: inc - exp };
+  }, [data]);
+
+  const prevTotals = useMemo(() => {
+    const inc = sum(prevData.income);
+    const exp = computeExpense(prevData);
+    return { inc, exp };
+  }, [prevData]);
+
+  const goNext = () => setStep(s => Math.min(s + 1, STEPS.length - 1));
+  const goPrev = () => setStep(s => Math.max(s - 1, 0));
+
+  const currentStep = STEPS[step];
+  const accent = C[currentStep.id] || C.intro;
+  const sans = '"Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, sans-serif';
+
+  const styles = {
+    page: { minHeight: '100vh', background: T.bg, fontFamily: sans, color: T.text, padding: isMobile ? '16px 16px 60px' : '32px 24px 80px', WebkitFontSmoothing: 'antialiased', MozOsxFontSmoothing: 'grayscale', transition: 'background 0.2s, color 0.2s' },
+    themeToggle: { position: 'fixed', top: isMobile ? 16 : 24, right: isMobile ? 16 : 24, width: 44, height: 44, borderRadius: '50%', background: T.card, border: `1.5px solid ${T.border}`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.text, zIndex: 10, WebkitTapHighlightColor: 'transparent' },
+    container: { maxWidth: 640, margin: '0 auto' },
+    progressWrap: { marginBottom: isMobile ? 28 : 40 },
+    progressTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 },
+    progressMonth: { fontSize: 12, letterSpacing: 0.5, color: T.textMuted, fontWeight: 600 },
+    progressCount: { fontSize: 12, color: T.textMuted, fontWeight: 600, fontVariantNumeric: 'tabular-nums', letterSpacing: 0.5 },
+    progressBar: { height: 3, background: T.borderSoft, overflow: 'hidden', borderRadius: 999 },
+    progressFill: { height: '100%', transition: 'width 0.4s, background 0.3s', borderRadius: 999 },
+    stepDots: { display: 'flex', gap: 6, marginTop: 16, justifyContent: 'center', flexWrap: 'wrap' },
+    stepDot: (active, done, color) => ({ width: isMobile ? 34 : 30, height: isMobile ? 34 : 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, background: active || done ? color : 'transparent', color: done || active ? '#FFFFFF' : T.textFaint, border: `1.5px solid ${done || active ? color : T.border}`, opacity: done ? 0.45 : 1, cursor: 'pointer', padding: 0, fontFamily: sans, WebkitTapHighlightColor: 'transparent' }),
+    header: { textAlign: 'center', marginBottom: isMobile ? 28 : 40 },
+    accentBar: { width: 32, height: 4, margin: '0 auto 18px', borderRadius: 999 },
+    eyebrow: { fontSize: 12, letterSpacing: 1, marginBottom: 14, fontWeight: 700 },
+    title: { fontSize: isMobile ? 32 : 42, fontWeight: 800, lineHeight: 1.1, margin: 0, letterSpacing: '-0.025em', color: T.text },
+    subtitle: { fontSize: isMobile ? 14 : 15, color: T.textMuted, marginTop: 14, lineHeight: 1.6, padding: isMobile ? '0 12px' : 0, fontWeight: 500 },
+    card: { background: T.card, border: `1.5px solid ${T.border}`, padding: isMobile ? '24px 18px' : '32px 28px', borderRadius: 16 },
+    fieldRow: { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 200px', gap: isMobile ? 10 : 24, alignItems: isMobile ? 'stretch' : 'center', padding: '18px 0', borderBottom: `1px solid ${T.borderSoft}` },
+    fieldRowLast: { borderBottom: 'none' },
+    fieldLabel: { fontSize: 16, fontWeight: 600, color: T.text, letterSpacing: '-0.01em' },
+    fieldSub: { fontSize: 12, color: T.textMuted, marginTop: 4, fontWeight: 500 },
+    prevHint: { fontSize: 12, color: T.textFaint, marginTop: 5, fontWeight: 500, fontVariantNumeric: 'tabular-nums' },
+    inputWrap: { position: 'relative' },
+    input: { width: '100%', padding: isMobile ? '14px 38px 14px 16px' : '13px 38px 13px 16px', fontSize: 18, fontWeight: 600, background: T.inputBg, border: `1.5px solid ${T.inputBorder}`, textAlign: 'right', fontFamily: sans, color: T.text, outline: 'none', boxSizing: 'border-box', borderRadius: 12, WebkitAppearance: 'none', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em', transition: 'border-color 0.15s, background 0.15s' },
+    inputUnit: { position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: T.textMuted, pointerEvents: 'none', fontWeight: 500 },
+    diff: { fontSize: 11, marginTop: 5, display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end', fontWeight: 600, fontVariantNumeric: 'tabular-nums' },
+    nav: { display: 'flex', justifyContent: 'space-between', marginTop: isMobile ? 20 : 32, gap: 10 },
+    btn: { padding: isMobile ? '15px 22px' : '14px 28px', fontSize: 13, letterSpacing: 0.3, border: `1.5px solid ${T.text}`, cursor: 'pointer', fontFamily: sans, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 50, borderRadius: 999, WebkitTapHighlightColor: 'transparent' },
+    btnPrimary: { background: T.invertBg, color: T.invertText, borderColor: T.invertBg },
+    btnGhost: { background: 'transparent', color: T.text },
+    btnDisabled: { opacity: 0.2, cursor: 'not-allowed' },
+    catTotal: { marginTop: 24, paddingTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' },
+    catTotalLabel: { fontSize: 12, letterSpacing: 0.5, fontWeight: 700 },
+    catTotalVal: { fontSize: isMobile ? 26 : 30, fontWeight: 700, letterSpacing: '-0.025em', fontVariantNumeric: 'tabular-nums' },
+  };
+
+  const ThemeToggle = () => (
+    <button style={styles.themeToggle} onClick={() => setThemeMode(m => m === 'light' ? 'dark' : 'light')} aria-label="테마 변경">
+      {themeMode === 'light' ? <Moon size={17} strokeWidth={2.2} /> : <Sun size={17} strokeWidth={2.2} />}
+    </button>
+  );
+
+  const SavedToast = () => showSavedToast ? (
+    <div style={{ position: 'fixed', top: 24, left: '50%', transform: 'translateX(-50%)', background: C.income.main, color: '#FFFFFF', padding: '12px 20px', borderRadius: 999, fontSize: 13, fontWeight: 700, zIndex: 20, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+      ✓ {monthLabel(currentKey)} 저장 완료
+    </div>
+  ) : null;
+
+  // 클라우드 동기화 상태 표시 (우측 하단)
+  const SyncIndicator = () => {
+    const label = {
+      idle: '',
+      syncing: '저장 중…',
+      saved: '✓ 동기화됨',
+      error: '⚠ 저장 실패',
+    }[syncStatus] || '';
+    if (!label) return null;
+    const color = syncStatus === 'error' ? T.diffUp : syncStatus === 'saved' ? T.diffDown : T.textMuted;
+    return (
+      <div style={{ position: 'fixed', bottom: isMobile ? 12 : 16, right: isMobile ? 12 : 16, padding: '6px 12px', borderRadius: 999, background: T.card, border: `1px solid ${T.border}`, color, fontSize: 11, fontWeight: 700, zIndex: 9, letterSpacing: 0.3, pointerEvents: 'none', opacity: 0.85 }}>
+        {label}
+      </div>
+    );
+  };
+
+  // ===== 초기 로딩 화면 (Firestore 첫 로드 대기) =====
+  if (!isLoaded) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: T.bg, color: T.textMuted, fontSize: 13, fontWeight: 600, letterSpacing: 0.5, gap: 12 }}>
+        <div style={{ width: 28, height: 28, border: `2.5px solid ${T.border}`, borderTopColor: T.text, borderRadius: '50%', animation: 'budget-spin 0.8s linear infinite' }} />
+        <div>가계부 불러오는 중…</div>
+        <style>{`@keyframes budget-spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  // ===== Report View =====
+  if (showReport) {
+    const monthKeys = Object.keys(allData.months).sort().slice(-12);
+    const computeCat = (cat) => monthKeys.map(k => ({ month: k, value: sum(allData.months[k]?.[cat] || {}) }));
+    const balanceData = monthKeys.map(k => {
+      const m = allData.months[k] || {};
+      return { month: k, value: sum(m.income) - computeExpense(m) };
+    });
+
+    const sections = [
+      { key: 'income', label: '수입', data: computeCat('income'), color: C.income },
+      { key: 'cards', label: '지출 정산', data: monthKeys.map(k => ({ month: k, value: sumCards(allData.months[k]) })), color: C.cards, note: '카드 + 현금 − 마이너스' },
+      { key: 'utilities', label: '공과금', data: computeCat('utilities'), color: C.utilities },
+      { key: 'food', label: '식비', data: computeCat('food'), color: C.food, note: '기록만 — 지출 합계에 미포함' },
+      { key: 'yuri', label: '유리 정산', data: computeCat('yuri'), color: C.yuri },
+      { key: 'balance', label: '잔액', data: balanceData, color: { main: T.text, soft: T.cardAlt }, allowNegative: true, note: '수입 − (지출 정산 + 월세·LH + 유리 정산)' },
+    ];
+
+    const totalActivity = sections.reduce((a, s) => a + s.data.reduce((b, d) => b + Math.abs(d.value), 0), 0);
+    const hasAnyData = totalActivity > 0;
+
+    return (
+      <div style={styles.page}>
+        <ThemeToggle />
+        <SavedToast />
+        <SyncIndicator />
+        <div style={styles.container}>
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: isMobile ? 18 : 24 }}>
+            <button onClick={() => setShowReport(false)} aria-label="돌아가기" style={{ width: 40, height: 40, borderRadius: '50%', border: `1.5px solid ${T.border}`, background: T.card, color: T.text, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', WebkitTapHighlightColor: 'transparent', flexShrink: 0 }}>
+              <ChevronLeft size={16} strokeWidth={2.5} />
+            </button>
+            <div>
+              <div style={{ fontSize: 11, color: T.textMuted, fontWeight: 700, letterSpacing: 1.5, marginBottom: 2 }}>REPORT</div>
+              <h1 style={{ fontSize: isMobile ? 28 : 34, fontWeight: 800, lineHeight: 1.1, margin: 0, letterSpacing: '-0.03em', color: T.text }}>월별 리포트</h1>
+            </div>
+          </div>
+
+          <div style={{ fontSize: 12, color: T.textMuted, marginBottom: isMobile ? 20 : 28, fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
+            {monthKeys.length === 0
+              ? '데이터 없음'
+              : monthKeys.length === 1
+                ? `${monthLabel(monthKeys[0])} · 1개월`
+                : `${monthLabel(monthKeys[0])} – ${monthLabel(monthKeys[monthKeys.length - 1])} · ${monthKeys.length}개월`}
+          </div>
+
+          {!hasAnyData ? (
+            <div style={{ textAlign: 'center', padding: '60px 24px', background: T.card, border: `1.5px solid ${T.border}`, borderRadius: 16 }}>
+              <div style={{ fontSize: 36, marginBottom: 14 }}>📊</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>아직 기록된 데이터가 없어요</div>
+              <div style={{ fontSize: 12, color: T.textMuted, marginTop: 8, fontWeight: 500, lineHeight: 1.5 }}>
+                매월 가계부를 채우면<br />이곳에 그래프가 자라요.
+              </div>
+            </div>
+          ) : (
+            sections.map(s => {
+              const nonZero = s.data.filter(d => d.value !== 0);
+              const total = s.data.reduce((a, b) => a + b.value, 0);
+              const avg = nonZero.length > 0 ? total / nonZero.length : 0;
+              return (
+                <div key={s.key} style={{ background: T.card, border: `1.5px solid ${T.border}`, borderRadius: 16, padding: isMobile ? '20px 16px' : '24px 22px', marginBottom: 14, borderTop: `4px solid ${s.color.main}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: s.color.main, letterSpacing: 0.5 }}>{s.label}</div>
+                      <div style={{ fontSize: 11, color: T.textMuted, marginTop: 4, fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
+                        월평균 {avg < 0 ? '−' : ''}{fmtShort(Math.abs(avg))}
+                      </div>
+                      {s.note && <div style={{ fontSize: 10, color: T.textFaint, marginTop: 4, fontWeight: 500 }}>{s.note}</div>}
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: isMobile ? 16 : 19, fontWeight: 700, color: total < 0 ? T.diffUp : T.text, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.015em' }}>
+                        {total < 0 ? '−' : ''}{fmtShort(Math.abs(total))}
+                      </div>
+                      <div style={{ fontSize: 10, color: T.textFaint, marginTop: 2, fontWeight: 600, letterSpacing: 0.3 }}>누적</div>
+                    </div>
+                  </div>
+                  <BarChart data={s.data} color={s.color} T={T} isMobile={isMobile} sans={sans} allowNegative={s.allowNegative} />
+                </div>
+              );
+            })
+          )}
+
+          <button onClick={() => setShowReport(false)} style={{ ...styles.btn, ...styles.btnGhost, width: '100%', marginTop: 18, border: `1.5px solid ${T.border}`, color: T.text }}>
+            <ChevronLeft size={15} strokeWidth={2.5} /> 가계부로 돌아가기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== Intro =====
+  if (currentStep.id === 'intro') {
+    const hasInput = sum(data.income) + sum(data.cards) + sum(data.utilities) + sum(data.food) + sum(data.yuri) > 0;
+    const statusColor = isCurrentFinalized ? C.income : (hasInput ? C.food : C.intro);
+    const statusLabel = isCurrentFinalized ? '✓ 저장 완료' : (hasInput ? '✏️ 작성 중' : '📄 새 달');
+
+    return (
+      <div style={styles.page}>
+        <ThemeToggle />
+        <SavedToast />
+        <SyncIndicator />
+        <div style={{ ...styles.container, paddingTop: isMobile ? 30 : 60, textAlign: 'center' }}>
+          <div style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, marginBottom: 16, letterSpacing: 1.5 }}>YURI &amp; HYUNWOO · 가족회의</div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 8 : 16, marginBottom: 8 }}>
+            <button onClick={goPrevMonth} aria-label="이전 달" style={{ width: 40, height: 40, borderRadius: '50%', border: `1.5px solid ${T.border}`, background: T.card, color: T.text, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', WebkitTapHighlightColor: 'transparent' }}>
+              <ChevronLeft size={16} strokeWidth={2.5} />
+            </button>
+            <h1 style={{ ...styles.title, fontSize: isMobile ? 36 : 48, fontWeight: 800, letterSpacing: '-0.035em', margin: 0, minWidth: isMobile ? 160 : 220 }}>{monthLabel(currentKey)}</h1>
+            <button onClick={goNextMonth} aria-label="다음 달" style={{ width: 40, height: 40, borderRadius: '50%', border: `1.5px solid ${T.border}`, background: T.card, color: T.text, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', WebkitTapHighlightColor: 'transparent' }}>
+              <ChevronRight size={16} strokeWidth={2.5} />
+            </button>
+          </div>
+
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: statusColor.soft, color: statusColor.main, fontSize: 12, fontWeight: 700, letterSpacing: 0.3, borderRadius: 999, marginBottom: 16 }}>
+            {statusLabel}
+          </div>
+
+          <div style={{ ...styles.subtitle, maxWidth: 440, margin: '0 auto' }}>
+            한 달 동안의 수입과 지출을 함께 정리해요.<br />
+            전월 값이 미리 채워져 있으니 변동된 항목만 수정하면 돼요.
+          </div>
+
+          <div style={{ margin: isMobile ? '32px 0 12px' : '48px 0 16px', border: `1.5px solid ${T.border}`, background: T.card, borderRadius: 16, overflow: 'hidden' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+              <div style={{ padding: isMobile ? '20px 14px' : '24px 20px', borderRight: `1.5px solid ${T.border}`, borderBottom: `1.5px solid ${T.border}`, textAlign: 'left' }}>
+                <div style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, marginBottom: 8, letterSpacing: 0.3 }}>전월 수입</div>
+                <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, letterSpacing: '-0.025em', fontVariantNumeric: 'tabular-nums', color: T.text }}>{fmtMCH(prevTotals.inc)}</div>
+              </div>
+              <div style={{ padding: isMobile ? '20px 14px' : '24px 20px', borderBottom: `1.5px solid ${T.border}`, textAlign: 'left' }}>
+                <div style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, marginBottom: 8, letterSpacing: 0.3 }}>전월 지출</div>
+                <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, letterSpacing: '-0.025em', fontVariantNumeric: 'tabular-nums', color: T.text }}>{fmtMCH(prevTotals.exp)}</div>
+              </div>
+            </div>
+            <div style={{ padding: isMobile ? '24px 16px' : '28px 24px', background: themeMode === 'light' ? '#FAFAFA' : '#1F1F23', textAlign: 'left' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: editingAssets ? 10 : 6 }}>
+                <div style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, letterSpacing: 0.3 }}>총 자산</div>
+                <button
+                  onClick={() => setEditingAssets(e => !e)}
+                  style={{ fontSize: 10, color: editingAssets ? C.income.main : T.textFaint, fontWeight: 700, background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 8px', borderRadius: 6, fontFamily: sans, letterSpacing: 0.3, WebkitTapHighlightColor: 'transparent' }}
+                  aria-label={editingAssets ? '수정 완료' : '총 자산 수정'}
+                >
+                  {editingAssets ? '✓ 완료' : '✎ 수정'}
+                </button>
+              </div>
+              {editingAssets ? (
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoFocus
+                    value={totalAssets === 0 ? '' : fmt(totalAssets)}
+                    placeholder="0"
+                    onChange={(e) => updateTotalAssets(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.target.blur(); setEditingAssets(false); } }}
+                    onBlur={() => setEditingAssets(false)}
+                    style={{ width: '100%', padding: isMobile ? '12px 36px 12px 14px' : '14px 40px 14px 16px', fontSize: isMobile ? 22 : 28, fontWeight: 800, background: T.card, border: `1.5px solid ${C.income.main}`, color: T.text, outline: 'none', boxSizing: 'border-box', borderRadius: 12, letterSpacing: '-0.025em', fontVariantNumeric: 'tabular-nums', fontFamily: sans, textAlign: 'right', WebkitAppearance: 'none' }}
+                  />
+                  <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: T.textMuted, pointerEvents: 'none', fontWeight: 600 }}>원</span>
+                </div>
+              ) : (
+                <div
+                  onClick={() => setEditingAssets(true)}
+                  style={{ fontSize: isMobile ? 24 : 32, fontWeight: 800, letterSpacing: '-0.03em', color: totalAssets === 0 ? T.textFaint : T.text, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
+                >
+                  {totalAssets === 0 ? '입력하기' : fmtFull(totalAssets)}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div style={{ fontSize: 11, color: T.textFaint, marginBottom: isMobile ? 28 : 36, fontWeight: 500, letterSpacing: 0.3 }}>
+            전월: {monthLabel(prevKey)}
+          </div>
+
+          <div style={{ marginBottom: isMobile ? 32 : 44 }}>
+            <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 14, fontWeight: 600, letterSpacing: 0.5 }}>오늘 정리할 항목</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, justifyContent: 'center' }}>
+              {STEPS.slice(1, -1).map(s => {
+                const c = C[s.id];
+                return (
+                  <div key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: c.soft, color: c.main, fontSize: 13, fontWeight: 700, letterSpacing: -0.1, borderRadius: 999 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.main }} />{s.label}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <button style={{ ...styles.btn, ...styles.btnPrimary, padding: isMobile ? '17px 40px' : '20px 56px', fontSize: 14, width: isMobile ? '100%' : 'auto' }} onClick={goNext}>
+            {isCurrentFinalized ? '이어서 보기' : '시작하기'} <ChevronRight size={16} strokeWidth={2.5} />
+          </button>
+          <div style={{ marginTop: 18, fontSize: 11, color: T.textFaint, letterSpacing: 0.3, fontWeight: 500 }}>
+            💾 자동 저장됨 · 새로고침해도 유지
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const cat = currentStep.id;
+  const isFieldStep = !!FIELDS[cat];
+  const isUnexpected = cat === 'unexpected';
+  const isReview = cat === 'review';
+
+  const renderField = (field, idx, arr, indented) => {
+    const val = data[cat]?.[field.key] || 0;
+    const prev = prevData[cat]?.[field.key] || 0;
+    const diff = val - prev;
+    const isLast = idx === arr.length - 1;
+    return (
+      <div key={field.key} style={{ ...styles.fieldRow, ...(isLast ? styles.fieldRowLast : {}), paddingLeft: indented ? (isMobile ? 16 : 20) : 0, position: 'relative' }}>
+        {indented && <div style={{ position: 'absolute', left: 4, top: 12, bottom: 12, width: 2, background: accent.soft, borderRadius: 1 }} />}
+        <div>
+          <div style={{ ...styles.fieldLabel, fontSize: indented ? (isMobile ? 14 : 15) : 16, fontWeight: indented ? 500 : 600, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+            <span>{field.label}</span>
+            {field.subtract && (
+              <span style={{ fontSize: 10, fontWeight: 700, color: C.unexpected.main, background: C.unexpected.soft, padding: '2px 8px', borderRadius: 999, letterSpacing: 0.3 }}>− 차감</span>
+            )}
+          </div>
+          {field.sub && <div style={styles.fieldSub}>{field.sub}</div>}
+          <div style={styles.prevHint}>전월 {fmt(prev)}원</div>
+        </div>
+        <div>
+          <div style={styles.inputWrap}>
+            <input type="text" inputMode="numeric" pattern="[0-9]*" value={val === 0 ? '' : fmt(val)} placeholder="0"
+              onChange={(e) => updateField(cat, field.key, e.target.value)}
+              style={{ ...styles.input, color: field.subtract && val > 0 ? C.unexpected.main : T.text }}
+              onFocus={(e) => { e.target.style.borderColor = accent.main; e.target.style.background = T.card; }}
+              onBlur={(e) => { e.target.style.borderColor = T.inputBorder; e.target.style.background = T.inputBg; }} />
+            <span style={styles.inputUnit}>원</span>
+          </div>
+          {val > 0 && diff !== 0 && (
+            <div style={{ ...styles.diff, color: diff > 0 ? T.diffUp : T.diffDown }}>
+              {diff > 0 ? <TrendingUp size={11} strokeWidth={2.25} /> : <TrendingDown size={11} strokeWidth={2.25} />}
+              {diff > 0 ? '+' : ''}{fmt(diff)}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderGroup = (group, idx, arr) => {
+    const expanded = expandedGroups[group.key];
+    const childKeys = group.children.map(c => c.key);
+    const total = sumKeys(data[cat], childKeys);
+    const prevTotal = sumKeys(prevData[cat], childKeys);
+    const diff = total - prevTotal;
+    const isLast = idx === arr.length - 1;
+    return (
+      <div key={group.key} style={{ borderBottom: isLast ? 'none' : `1px solid ${T.borderSoft}` }}>
+        <button onClick={() => toggleGroup(group.key)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 0', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: sans, color: T.text, WebkitTapHighlightColor: 'transparent', textAlign: 'left' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', display: 'flex', color: accent.main }}>
+              <ChevronDown size={16} strokeWidth={2.5} />
+            </div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: T.text, letterSpacing: '-0.01em' }}>
+                {group.label}
+                <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: accent.main, background: accent.soft, padding: '2px 8px', borderRadius: 999 }}>{group.children.length}</span>
+              </div>
+              <div style={styles.prevHint}>전월 {fmt(prevTotal)}원</div>
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: T.text, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.015em' }}>
+              {fmt(total)}<span style={{ fontSize: 13, color: T.textMuted, marginLeft: 2, fontWeight: 500 }}>원</span>
+            </div>
+            {total > 0 && diff !== 0 && (
+              <div style={{ ...styles.diff, color: diff > 0 ? T.diffUp : T.diffDown, marginTop: 4 }}>
+                {diff > 0 ? <TrendingUp size={11} strokeWidth={2.25} /> : <TrendingDown size={11} strokeWidth={2.25} />}
+                {diff > 0 ? '+' : ''}{fmt(diff)}
+              </div>
+            )}
+          </div>
+        </button>
+        {expanded && <div style={{ paddingBottom: 12 }}>{group.children.map((child, i, arr) => renderField(child, i, arr, true))}</div>}
+      </div>
+    );
+  };
+
+  // 동적 그룹 (기타 수입, 유리 정산 기타 항목 등) — 항목 이름과 금액을 자유롭게 입력
+  const renderDynamicGroup = (group, idx, arr) => {
+    const expanded = expandedGroups[group.key];
+    const items = data[cat]?.[group.listKey] || [];
+    const prevItems = prevData[cat]?.[group.listKey] || [];
+    const total = sumList(items);
+    const prevTotal = sumList(prevItems);
+    const diff = total - prevTotal;
+    const isLast = idx === arr.length - 1;
+    return (
+      <div key={group.key} style={{ borderBottom: isLast ? 'none' : `1px solid ${T.borderSoft}` }}>
+        <button onClick={() => toggleGroup(group.key)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 0', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: sans, color: T.text, WebkitTapHighlightColor: 'transparent', textAlign: 'left' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', display: 'flex', color: accent.main }}>
+              <ChevronDown size={16} strokeWidth={2.5} />
+            </div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: T.text, letterSpacing: '-0.01em' }}>
+                {group.label}
+                <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: accent.main, background: accent.soft, padding: '2px 8px', borderRadius: 999 }}>{items.length}</span>
+              </div>
+              <div style={styles.prevHint}>전월 {fmt(prevTotal)}원</div>
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: T.text, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.015em' }}>
+              {fmt(total)}<span style={{ fontSize: 13, color: T.textMuted, marginLeft: 2, fontWeight: 500 }}>원</span>
+            </div>
+            {total > 0 && diff !== 0 && (
+              <div style={{ ...styles.diff, color: diff > 0 ? T.diffUp : T.diffDown, marginTop: 4 }}>
+                {diff > 0 ? <TrendingUp size={11} strokeWidth={2.25} /> : <TrendingDown size={11} strokeWidth={2.25} />}
+                {diff > 0 ? '+' : ''}{fmt(diff)}
+              </div>
+            )}
+          </div>
+        </button>
+        {expanded && (
+          <div style={{ paddingBottom: 16, paddingLeft: isMobile ? 16 : 20, position: 'relative' }}>
+            <div style={{ position: 'absolute', left: 4, top: 4, bottom: 16, width: 2, background: accent.soft, borderRadius: 1 }} />
+            {items.length === 0 && (
+              <div style={{ padding: '14px 0', fontSize: 13, color: T.textFaint, fontWeight: 500 }}>
+                아직 항목이 없어요. 아래 버튼으로 추가하세요.
+              </div>
+            )}
+            {items.map((u, i) => (
+              <div key={u.id} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 36px' : '1fr 180px 36px', gap: isMobile ? 8 : 12, padding: '12px 0', borderBottom: i === items.length - 1 ? 'none' : `1px solid ${T.borderSoft}`, alignItems: 'center' }}>
+                <input type="text" placeholder={group.placeholder || '항목'} value={u.label}
+                  onChange={(e) => updateListItem(cat, group.listKey, u.id, 'label', e.target.value)}
+                  style={{ ...styles.input, textAlign: 'left', fontSize: 15, fontWeight: 500, gridColumn: isMobile ? '1 / -1' : 'auto' }}
+                  onFocus={(e) => { e.target.style.borderColor = accent.main; e.target.style.background = T.card; }}
+                  onBlur={(e) => { e.target.style.borderColor = T.inputBorder; e.target.style.background = T.inputBg; }} />
+                {isMobile && <div />}
+                <div style={{ ...styles.inputWrap, gridColumn: isMobile ? '1' : 'auto' }}>
+                  <input type="text" inputMode="numeric" pattern="[0-9]*" placeholder="0" value={u.amount === 0 ? '' : fmt(u.amount)}
+                    onChange={(e) => updateListItem(cat, group.listKey, u.id, 'amount', e.target.value)} style={styles.input}
+                    onFocus={(e) => { e.target.style.borderColor = accent.main; e.target.style.background = T.card; }}
+                    onBlur={(e) => { e.target.style.borderColor = T.inputBorder; e.target.style.background = T.inputBg; }} />
+                  <span style={styles.inputUnit}>원</span>
+                </div>
+                <button onClick={() => removeListItem(cat, group.listKey, u.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: T.textFaint, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 44, WebkitTapHighlightColor: 'transparent' }} aria-label="삭제">
+                  <X size={18} strokeWidth={2.25} />
+                </button>
+              </div>
+            ))}
+            <button onClick={() => addListItem(cat, group.listKey)} style={{ ...styles.btn, ...styles.btnGhost, width: '100%', marginTop: 12, borderStyle: 'dashed', borderColor: accent.main, color: accent.main, borderRadius: 12, padding: '12px 18px', minHeight: 44 }}>
+              <Plus size={15} strokeWidth={2.5} /> 항목 추가
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div style={styles.page}>
+      <ThemeToggle />
+      <SavedToast />
+        <SyncIndicator />
+      <div style={styles.container}>
+        <div style={styles.progressWrap}>
+          <div style={styles.progressTop}>
+            <span style={styles.progressMonth}>{monthLabel(currentKey)}</span>
+            <span style={styles.progressCount}>{String(step).padStart(2,'0')} / {String(STEPS.length-1).padStart(2,'0')}</span>
+          </div>
+          <div style={styles.progressBar}>
+            <div style={{ ...styles.progressFill, width: `${(step / (STEPS.length-1)) * 100}%`, background: accent.main }} />
+          </div>
+          <div style={styles.stepDots}>
+            {STEPS.slice(1).map((s, i) => {
+              const idx = i + 1;
+              const dotColor = C[s.id]?.main || T.text;
+              return (
+                <button key={s.id} onClick={() => setStep(idx)} style={styles.stepDot(idx === step, idx < step, dotColor)} title={s.label} aria-label={s.label}>
+                  {idx < step ? <Check size={13} strokeWidth={2.75} /> : idx}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={styles.header}>
+          <div style={{ ...styles.accentBar, background: accent.main }} />
+          <div style={{ ...styles.eyebrow, color: accent.main }}>STEP {String(step).padStart(2,'0')}</div>
+          <h2 style={styles.title}>{currentStep.label}</h2>
+          {isFieldStep && cat !== 'cards' && <div style={styles.subtitle}>전월 값이 미리 채워져 있어요.<br />바뀐 항목만 수정하세요.</div>}
+          {cat === 'cards' && <div style={styles.subtitle}>카드·현금 지출을 정리해요.<br />이 합이 지출의 일부로 계산돼요.</div>}
+          {isUnexpected && <div style={styles.subtitle}>예상치 못한 큰 지출이 있었나요?<br />(의료, 수리, 경조사 등)</div>}
+          {isReview && <div style={styles.subtitle}>모든 입력이 끝났어요.<br />한 번 더 확인하고 저장해요.</div>}
+        </div>
+
+        <div style={{ ...styles.card, borderTop: `4px solid ${accent.main}` }}>
+          {isFieldStep && (
+            <React.Fragment>
+              {FIELDS[cat].map((item, i, arr) => {
+                if (item.type === 'group') return renderGroup(item, i, arr);
+                if (item.type === 'dynamicGroup') return renderDynamicGroup(item, i, arr);
+                return renderField(item, i, arr, false);
+              })}
+              <div style={{ ...styles.catTotal, borderTop: `2px solid ${accent.main}` }}>
+                <span style={{ ...styles.catTotalLabel, color: accent.main }}>{currentStep.label} 합계</span>
+                <span style={{ ...styles.catTotalVal, color: accent.main }}>
+                  {fmt(cat === 'cards' ? sumCards(data) : sum(data[cat]))}<span style={{ fontSize: 14, color: T.textMuted, marginLeft: 4, fontWeight: 600 }}>원</span>
+                </span>
+              </div>
+              <div style={{ textAlign: 'right', marginTop: 8, fontSize: 11, color: T.textFaint, fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                전월 {fmt(cat === 'cards' ? sumCards(prevData) : sum(prevData[cat]))}원 · {(() => {
+                  const curT = cat === 'cards' ? sumCards(data) : sum(data[cat]);
+                  const prvT = cat === 'cards' ? sumCards(prevData) : sum(prevData[cat]);
+                  const d = curT - prvT;
+                  return d === 0 ? '동일' : `${d>0?'+':''}${fmt(d)}원`;
+                })()}
+              </div>
+              {cat === 'yuri' && (() => {
+                const yuriSalary = data.income?.yuri || 0;
+                const yuriTotal = sum(data.yuri);
+                const remaining = yuriSalary - yuriTotal;
+                const negative = remaining < 0;
+                return (
+                  <div style={{ marginTop: 20, padding: isMobile ? '18px 16px' : '20px 20px', background: accent.soft, borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: accent.main, letterSpacing: 0.3 }}>유리 월급에서 정산 후</div>
+                      <div style={{ fontSize: 11, color: T.textMuted, marginTop: 4, fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
+                        월급 {fmt(yuriSalary)} − 정산 {fmt(yuriTotal)}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.025em', color: negative ? T.diffUp : accent.main, whiteSpace: 'nowrap' }}>
+                      {negative ? '−' : '+'}{fmt(Math.abs(remaining))}<span style={{ fontSize: 13, marginLeft: 3, fontWeight: 600 }}>원</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </React.Fragment>
+          )}
+
+          {isUnexpected && (
+            <React.Fragment>
+              {(!data.unexpected || data.unexpected.length === 0) && (
+                <div style={{ textAlign: 'center', padding: '32px 0', color: T.textFaint, fontSize: 14, fontWeight: 500 }}>예상 외 지출이 없으면<br />그대로 다음으로 넘어가요.</div>
+              )}
+              {(data.unexpected || []).map((u, i) => (
+                <div key={u.id} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 36px' : '1fr 180px 36px', gap: isMobile ? 8 : 12, padding: '14px 0', borderBottom: i === data.unexpected.length - 1 ? 'none' : `1px solid ${T.borderSoft}`, alignItems: 'center' }}>
+                  <input type="text" placeholder="항목 (예: 치과)" value={u.label}
+                    onChange={(e) => updateUnexpected(u.id, 'label', e.target.value)}
+                    style={{ ...styles.input, textAlign: 'left', fontSize: 15, fontWeight: 500, gridColumn: isMobile ? '1 / -1' : 'auto' }}
+                    onFocus={(e) => { e.target.style.borderColor = accent.main; e.target.style.background = T.card; }}
+                    onBlur={(e) => { e.target.style.borderColor = T.inputBorder; e.target.style.background = T.inputBg; }} />
+                  {isMobile && <div />}
+                  <div style={{ ...styles.inputWrap, gridColumn: isMobile ? '1' : 'auto' }}>
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" placeholder="0" value={u.amount === 0 ? '' : fmt(u.amount)}
+                      onChange={(e) => updateUnexpected(u.id, 'amount', e.target.value)} style={styles.input}
+                      onFocus={(e) => { e.target.style.borderColor = accent.main; e.target.style.background = T.card; }}
+                      onBlur={(e) => { e.target.style.borderColor = T.inputBorder; e.target.style.background = T.inputBg; }} />
+                    <span style={styles.inputUnit}>원</span>
+                  </div>
+                  <button onClick={() => removeUnexpected(u.id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: T.textFaint, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 44, WebkitTapHighlightColor: 'transparent' }} aria-label="삭제">
+                    <X size={18} strokeWidth={2.25} />
+                  </button>
+                </div>
+              ))}
+              <button onClick={addUnexpected} style={{ ...styles.btn, ...styles.btnGhost, width: '100%', marginTop: 16, borderStyle: 'dashed', borderColor: T.textFaint, color: T.textMuted, borderRadius: 12 }}>
+                <Plus size={15} strokeWidth={2.5} /> 항목 추가
+              </button>
+            </React.Fragment>
+          )}
+
+          {isReview && (
+            <React.Fragment>
+              <ReviewBlock label="수입" total={sum(data.income)} prev={sum(prevData.income)}
+                items={[
+                  { label: '유리 월급', val: data.income?.yuri || 0 },
+                  { label: '현우 월급', val: data.income?.hyunwoo || 0 },
+                  ...(data.income?.etcList || []).map(it => ({ label: it.label || '기타', val: it.amount })),
+                ]}
+                color={C.income} T={T} sans={sans} />
+              <ReviewBlock label="지출 정산" total={sumCards(data)} prev={sumCards(prevData)} items={FIELDS.cards.map(f => ({ label: f.label, val: data.cards?.[f.key] || 0, subtract: f.subtract }))} color={C.cards} T={T} sans={sans} />
+              <ReviewBlock label="공과금" total={sum(data.utilities)} prev={sum(prevData.utilities)} items={FIELDS.utilities.map(f => ({ label: f.label, val: data.utilities?.[f.key] || 0 }))} color={C.utilities} T={T} sans={sans} />
+              <ReviewBlock label="식비" total={sum(data.food)} prev={sum(prevData.food)} items={FIELDS.food.map(f => ({ label: f.label, val: sumList(data.food?.[f.listKey] || []) }))} color={C.food} T={T} sans={sans} />
+              <ReviewBlock label="유리 정산" total={sum(data.yuri)} prev={sum(prevData.yuri)}
+                items={[
+                  { label: '보험', val: sumKeys(data.yuri, ['ins_yuri_total', 'ins_yuri_teeth', 'ins_baby_total', 'ins_baby_silbi']) },
+                  { label: '택시', val: data.yuri?.taxi || 0 },
+                  { label: '통신', val: data.yuri?.telecom || 0 },
+                  { label: '청약', val: data.yuri?.savings || 0 },
+                  { label: '교통', val: data.yuri?.transit || 0 },
+                  ...(data.yuri?.extraList || []).map(it => ({ label: it.label || '기타', val: it.amount })),
+                ]}
+                color={C.yuri} T={T} sans={sans} />
+              {(data.unexpected || []).length > 0 && (
+                <ReviewBlock label="예상 외 지출" total={(data.unexpected || []).reduce((a,b)=>a+b.amount,0)} prev={0}
+                  items={(data.unexpected || []).map(u => ({ label: u.label || '(이름 없음)', val: u.amount }))}
+                  color={C.unexpected} T={T} sans={sans} flagged />
+              )}
+              <div style={{ marginTop: 32, padding: isMobile ? '26px 22px' : '32px 28px', background: T.invertBg, color: T.invertText, borderRadius: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+                  <span style={{ fontSize: 12, letterSpacing: 0.5, opacity: 0.6, fontWeight: 600 }}>총 수입</span>
+                  <span style={{ fontSize: isMobile ? 19 : 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>{fmt(totals.inc)}원</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, letterSpacing: 0.5, opacity: 0.6, fontWeight: 600 }}>총 지출</span>
+                  <span style={{ fontSize: isMobile ? 19 : 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>{fmt(totals.exp)}원</span>
+                </div>
+                <div style={{ fontSize: 10, opacity: 0.45, fontWeight: 500, marginBottom: 12, letterSpacing: 0.2 }}>
+                  지출 정산 {fmtShort(sumCards(data))} + 월세·LH {fmtShort((data.utilities?.rent || 0) + (data.utilities?.lh || 0))} + 유리 정산 {fmtShort(sum(data.yuri))}
+                </div>
+                <div style={{ height: 1, background: T.invertBorder, margin: '18px 0' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ fontSize: 13, letterSpacing: 0.5, fontWeight: 700 }}>이번 달 잔액</span>
+                  <span style={{ fontSize: isMobile ? 30 : 38, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.035em', color: totals.balance >= 0 ? T.invertText : (themeMode === 'light' ? '#FCA5A5' : '#F87171') }}>
+                    {totals.balance >= 0 ? '+' : ''}{fmt(totals.balance)}
+                  </span>
+                </div>
+              </div>
+              {isCurrentFinalized ? (
+                <div style={{ marginTop: 22, padding: '18px', textAlign: 'center', background: C.income.soft, color: C.income.main, fontSize: 13, letterSpacing: 0.3, fontWeight: 700, borderRadius: 12 }}>
+                  ✓ {monthLabel(currentKey)} 저장 완료
+                </div>
+              ) : (
+                <button onClick={finalizeMonth} style={{ ...styles.btn, ...styles.btnPrimary, width: '100%', marginTop: 22, padding: isMobile ? '18px' : '20px', fontSize: 14 }}>
+                  <Check size={17} strokeWidth={2.5} /> 이번 달 가계부 저장
+                </button>
+              )}
+              <button onClick={() => setShowReport(true)} style={{ ...styles.btn, ...styles.btnGhost, width: '100%', marginTop: 12, border: `1.5px solid ${T.border}`, color: T.text, fontWeight: 700, padding: isMobile ? '16px' : '17px' }}>
+                📊 월별 리포트 보기
+              </button>
+            </React.Fragment>
+          )}
+        </div>
+
+        <div style={styles.nav}>
+          <button onClick={goPrev} style={{ ...styles.btn, ...styles.btnGhost, ...(step === 0 ? styles.btnDisabled : {}), flex: isMobile ? '0 0 auto' : 'unset' }} disabled={step === 0}>
+            <ChevronLeft size={15} strokeWidth={2.5} /> 이전
+          </button>
+          {!isReview && (
+            <button onClick={goNext} style={{ ...styles.btn, ...styles.btnPrimary, flex: isMobile ? 1 : 'unset' }}>
+              다음 <ChevronRight size={15} strokeWidth={2.5} />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<MonthlyWizard />);
+  </script>
+</body>
+</html>
