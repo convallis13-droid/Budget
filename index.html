@@ -1,36 +1,31 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#FAFAFA" />
-  <title>가족회의 가계부 · 유리 &amp; 현우</title>
-
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
-
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <!-- Firebase SDK (compat) -->
-  <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore-compat.js"></script>
-
-  <style>
-    html, body { margin: 0; padding: 0; }
-    body { font-family: "Pretendard Variable", sans-serif; }
-    #root { min-height: 100vh; }
-    input, button { font-family: inherit; }
-    .loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #FAFAFA; color: #71717A; font-size: 14px; font-weight: 600; letter-spacing: 0.5px; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#FAFAFA" />
+<title>가족회의 가계부 · 유리 &amp; 현우</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<!-- Firebase SDK (compat) -->
+<script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore-compat.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; }
+  body { font-family: "Pretendard Variable", sans-serif; }
+  #root { min-height: 100vh; }
+  input, button { font-family: inherit; }
+  .loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #FAFAFA; color: #71717A; font-size: 14px; font-weight: 600; letter-spacing: 0.5px; }
+</style>
 </head>
 <body>
-  <div id="root"><div class="loading">불러오는 중…</div></div>
-
-  <script type="text/babel" data-presets="react">
-    const { useState, useMemo, useEffect, useRef } = React;
+<div id="root"><div class="loading">불러오는 중…</div></div>
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useEffect, useRef } = React;
 
 // ============== Firebase 설정 ==============
 // ↓↓↓ 여기에 본인의 Firebase 프로젝트 설정을 붙여넣으세요 ↓↓↓
@@ -61,23 +56,24 @@ const authReady = auth.signInAnonymously().catch((e) => {
 
 const docRef = () => db.collection(DOC_PATH_COLLECTION).doc(DOC_PATH_DOC);
 
-
 // ============== 아이콘 ==============
 const Icon = ({ size = 16, strokeWidth = 2, children, style }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', ...style }}>
     {children}
   </svg>
 );
-const ChevronLeft  = (p) => <Icon {...p}><path d="m15 18-6-6 6-6"/></Icon>;
+const ChevronLeft = (p) => <Icon {...p}><path d="m15 18-6-6 6-6"/></Icon>;
 const ChevronRight = (p) => <Icon {...p}><path d="m9 18 6-6-6-6"/></Icon>;
-const ChevronDown  = (p) => <Icon {...p}><path d="m6 9 6 6 6-6"/></Icon>;
-const Check        = (p) => <Icon {...p}><path d="M20 6 9 17l-5-5"/></Icon>;
-const TrendingUp   = (p) => <Icon {...p}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></Icon>;
+const ChevronDown = (p) => <Icon {...p}><path d="m6 9 6 6 6-6"/></Icon>;
+const Check = (p) => <Icon {...p}><path d="M20 6 9 17l-5-5"/></Icon>;
+const TrendingUp = (p) => <Icon {...p}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></Icon>;
 const TrendingDown = (p) => <Icon {...p}><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></Icon>;
-const Plus         = (p) => <Icon {...p}><path d="M5 12h14"/><path d="M12 5v14"/></Icon>;
-const X            = (p) => <Icon {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></Icon>;
-const Sun          = (p) => <Icon {...p}><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></Icon>;
-const Moon         = (p) => <Icon {...p}><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></Icon>;
+const Plus = (p) => <Icon {...p}><path d="M5 12h14"/><path d="M12 5v14"/></Icon>;
+const X = (p) => <Icon {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></Icon>;
+const Sun = (p) => <Icon {...p}><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></Icon>;
+const Moon = (p) => <Icon {...p}><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></Icon>;
+const Home = (p) => <Icon {...p}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></Icon>;
+const Activity = (p) => <Icon {...p}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></Icon>;
 
 // ============== 상수 ==============
 const STORAGE_KEY = 'family-budget-v2';
@@ -91,7 +87,6 @@ const STEPS = [
   { id: 'unexpected', label: '예상 외 지출' },
   { id: 'review', label: '요약' },
 ];
-
 const COLORS = {
   light: {
     intro: { main: '#18181B', soft: '#F4F4F5' },
@@ -114,12 +109,15 @@ const COLORS = {
     review: { main: '#FAFAFA', soft: '#1F1F23' },
   },
 };
-
+// 식비 세부 시리즈 색상 (배달=진함, 외식=중간, 집밥=연함)
+const FOOD_SERIES_COLORS = {
+  light: { delivery: '#9A3412', dining: '#EA580C', groceries: '#FB923C' },
+  dark:  { delivery: '#F97316', dining: '#FB923C', groceries: '#FDBA74' },
+};
 const THEMES = {
   light: { bg: '#FAFAFA', card: '#FFFFFF', cardAlt: '#F4F4F5', text: '#09090B', textMuted: '#52525B', textFaint: '#A1A1AA', border: '#E4E4E7', borderSoft: '#F1F1F4', inputBg: '#F4F4F5', inputBorder: '#E4E4E7', invertBg: '#09090B', invertText: '#FAFAFA', invertBorder: 'rgba(250,250,250,0.12)', diffUp: '#DC2626', diffDown: '#059669' },
   dark: { bg: '#0A0A0C', card: '#18181B', cardAlt: '#1F1F23', text: '#FAFAFA', textMuted: '#A1A1AA', textFaint: '#71717A', border: '#27272A', borderSoft: '#1F1F23', inputBg: '#1F1F23', inputBorder: '#2D2D32', invertBg: '#FAFAFA', invertText: '#09090B', invertBorder: 'rgba(9,9,11,0.12)', diffUp: '#F87171', diffDown: '#34D399' },
 };
-
 const FIELDS = {
   income: [
     { key: 'yuri', label: '유리 월급', sub: '매월 25일 입금' },
@@ -127,7 +125,7 @@ const FIELDS = {
     { type: 'dynamicGroup', key: 'etc', listKey: 'etcList', label: '기타 수입', placeholder: '항목 (예: 보너스)' },
   ],
   cards: [
-    { key: 'hyundai_naver', label: '현대 NAVER' },
+    { key: 'hyundai_naver', label: '현대카드' },
     { key: 'kookmin_coupang', label: '국민 쿠팡' },
     { key: 'samsung', label: '삼성카드' },
     { key: 'lotte', label: '롯데카드' },
@@ -224,7 +222,6 @@ const storage = {
   _lastWrittenAt: 0,
   _onStatus: () => {},
   setStatusListener(fn) { this._onStatus = fn || (() => {}); },
-
   // 변경사항을 600ms 디바운스 후 Firestore에 저장
   save(data) {
     this._pending = data;
@@ -244,7 +241,6 @@ const storage = {
       }
     }, 600);
   },
-
   // 실시간 구독. 다른 기기에서 변경되면 callback이 호출됩니다.
   // 본인이 방금 쓴 데이터는 timestamp가 일치하므로 echo로 인식해서 무시합니다.
   subscribe(onData, onError) {
@@ -285,7 +281,6 @@ const sumCards = (m) => {
   const c = (m && m.cards) || {};
   return (c.hyundai_naver || 0) + (c.kookmin_coupang || 0) + (c.samsung || 0) + (c.lotte || 0) + (c.cash || 0) - (c.minus || 0);
 };
-
 // 총 지출 공식: 지출 정산(카드+현금−마이너스) + 월세 + LH + 유리 정산 합계
 const computeExpense = (m) => {
   if (!m) return 0;
@@ -293,7 +288,8 @@ const computeExpense = (m) => {
 };
 
 // ============== BarChart (SVG 막대 그래프) ==============
-function BarChart({ data, color, T, isMobile, sans, allowNegative }) {
+// showLine: true면 막대 위에 꺾은선(추세선) 오버레이
+function BarChart({ data, color, T, isMobile, sans, allowNegative, showLine }) {
   if (!data || data.length === 0) return null;
   const W = isMobile ? 340 : 580;
   const H = isMobile ? 180 : 220;
@@ -303,11 +299,21 @@ function BarChart({ data, color, T, isMobile, sans, allowNegative }) {
   const barCount = data.length;
   const barGap = barCount > 8 ? (isMobile ? 3 : 6) : (isMobile ? 6 : 10);
   const barWidth = Math.max((chartW - (barCount - 1) * barGap) / barCount, 4);
-
   const absMax = Math.max(...data.map(d => Math.abs(d.value)), 1);
   const hasNeg = allowNegative && data.some(d => d.value < 0);
   const zeroY = hasNeg ? PAD.top + chartH / 2 : PAD.top + chartH;
   const scale = (val) => (Math.abs(val) / absMax) * (hasNeg ? chartH / 2 : chartH);
+
+  // 꺾은선용 좌표 계산
+  const linePoints = data.map((d, i) => {
+    const x = PAD.left + i * (barWidth + barGap) + barWidth / 2;
+    const h = scale(d.value);
+    const isNeg = d.value < 0;
+    const y = isNeg ? zeroY + h : zeroY - h;
+    return { x, y, value: d.value };
+  });
+  const lineStr = linePoints.map(p => `${p.x},${p.y}`).join(' ');
+  const hasAnyValue = data.some(d => d.value !== 0);
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
@@ -325,8 +331,8 @@ function BarChart({ data, color, T, isMobile, sans, allowNegative }) {
         const monthNum = parseKey(d.month).month;
         return (
           <g key={d.month}>
-            <rect x={x} y={y} width={barWidth} height={Math.max(h, 1.5)} fill={barColor} rx={3} opacity={d.value === 0 ? 0.15 : 1} />
-            {showLabel && (
+            <rect x={x} y={y} width={barWidth} height={Math.max(h, 1.5)} fill={barColor} rx={3} opacity={d.value === 0 ? 0.15 : (showLine ? 0.55 : 1)} />
+            {showLabel && !showLine && (
               <text x={x + barWidth/2} y={labelY} textAnchor="middle" fontSize={isMobile ? 9 : 10} fill={T.textMuted} fontFamily={sans} fontWeight={600} fontVariantNumeric="tabular-nums">
                 {(isNeg ? '−' : '') + fmtShort(Math.abs(d.value))}
               </text>
@@ -337,6 +343,109 @@ function BarChart({ data, color, T, isMobile, sans, allowNegative }) {
           </g>
         );
       })}
+      {showLine && hasAnyValue && (
+        <g>
+          <polyline points={lineStr} fill="none" stroke={color.main} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+          {linePoints.map((p, i) => p.value !== 0 && (
+            <g key={i}>
+              <circle cx={p.x} cy={p.y} r={3.5} fill={T.card} stroke={color.main} strokeWidth={2} />
+              <text x={p.x} y={p.value < 0 ? p.y + 14 : p.y - 8} textAnchor="middle" fontSize={isMobile ? 9 : 10} fill={color.main} fontFamily={sans} fontWeight={700} fontVariantNumeric="tabular-nums">
+                {(p.value < 0 ? '−' : '') + fmtShort(Math.abs(p.value))}
+              </text>
+            </g>
+          ))}
+        </g>
+      )}
+    </svg>
+  );
+}
+
+// ============== StackedBarChart (식비 세부 - 배달/외식/집밥) ==============
+function StackedBarChart({ data, series, T, isMobile, sans, showLine }) {
+  if (!data || data.length === 0) return null;
+  const W = isMobile ? 340 : 580;
+  const H = isMobile ? 220 : 260;
+  const PAD = { top: 24, right: 10, bottom: 52, left: 10 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top - PAD.bottom;
+  const barCount = data.length;
+  const barGap = barCount > 8 ? (isMobile ? 3 : 6) : (isMobile ? 6 : 10);
+  const barWidth = Math.max((chartW - (barCount - 1) * barGap) / barCount, 4);
+
+  const totals = data.map(d => series.reduce((a, s) => a + (d.values[s.key] || 0), 0));
+  const maxTotal = Math.max(...totals, 1);
+  const scale = (v) => (v / maxTotal) * chartH;
+  const hasAnyValue = totals.some(t => t > 0);
+
+  // 꺾은선용 합계 좌표
+  const linePoints = data.map((d, i) => {
+    const x = PAD.left + i * (barWidth + barGap) + barWidth / 2;
+    const y = PAD.top + chartH - scale(totals[i]);
+    return { x, y, value: totals[i] };
+  });
+  const lineStr = linePoints.map(p => `${p.x},${p.y}`).join(' ');
+
+  // 가장 진한 시리즈 색 (꺾은선 색으로 사용)
+  const lineColor = series[0]?.color || T.text;
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
+      {data.map((d, i) => {
+        const x = PAD.left + i * (barWidth + barGap);
+        let cumY = PAD.top + chartH;
+        const total = totals[i];
+        const monthNum = parseKey(d.month).month;
+        const showLabel = total > 0 && scale(total) > 10;
+        return (
+          <g key={d.month}>
+            {series.map(s => {
+              const val = d.values[s.key] || 0;
+              if (val === 0) return null;
+              const h = scale(val);
+              cumY -= h;
+              return (
+                <rect key={s.key} x={x} y={cumY} width={barWidth} height={Math.max(h, 1)} fill={s.color} rx={1.5} opacity={showLine ? 0.55 : 1} />
+              );
+            })}
+            {showLabel && !showLine && (
+              <text x={x + barWidth/2} y={PAD.top + chartH - scale(total) - 6} textAnchor="middle" fontSize={isMobile ? 9 : 10} fill={T.textMuted} fontFamily={sans} fontWeight={600} fontVariantNumeric="tabular-nums">
+                {fmtShort(total)}
+              </text>
+            )}
+            <text x={x + barWidth/2} y={PAD.top + chartH + 18} textAnchor="middle" fontSize={isMobile ? 9 : 10} fill={T.textFaint} fontFamily={sans} fontWeight={500}>
+              {monthNum}월
+            </text>
+          </g>
+        );
+      })}
+      {showLine && hasAnyValue && (
+        <g>
+          <polyline points={lineStr} fill="none" stroke={lineColor} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+          {linePoints.map((p, i) => p.value > 0 && (
+            <g key={i}>
+              <circle cx={p.x} cy={p.y} r={3.5} fill={T.card} stroke={lineColor} strokeWidth={2} />
+              <text x={p.x} y={p.y - 8} textAnchor="middle" fontSize={isMobile ? 9 : 10} fill={lineColor} fontFamily={sans} fontWeight={700} fontVariantNumeric="tabular-nums">
+                {fmtShort(p.value)}
+              </text>
+            </g>
+          ))}
+        </g>
+      )}
+      {/* Legend */}
+      <g transform={`translate(${PAD.left}, ${H - 14})`}>
+        {series.map((s, i) => {
+          const totalGap = chartW / series.length;
+          const x = i * totalGap;
+          return (
+            <g key={s.key}>
+              <rect x={x} y={-8} width={10} height={10} fill={s.color} rx={2} />
+              <text x={x + 15} y={0} fontSize={isMobile ? 10 : 11} fill={T.textMuted} fontFamily={sans} fontWeight={600}>
+                {s.label}
+              </text>
+            </g>
+          );
+        })}
+      </g>
     </svg>
   );
 }
@@ -394,6 +503,7 @@ function MonthlyWizard() {
   const [showSavedToast, setShowSavedToast] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [editingAssets, setEditingAssets] = useState(false);
+  const [showLine, setShowLine] = useState(false); // 월별 리포트 - 꺾은선 추세선 토글
 
   // Firestore 실시간 구독 + 동기화 상태
   useEffect(() => {
@@ -521,6 +631,7 @@ function MonthlyWizard() {
 
   const goPrevMonth = () => { setCurrentKey(k => shiftMonth(k, -1)); setStep(0); };
   const goNextMonth = () => { setCurrentKey(k => shiftMonth(k, 1)); setStep(0); };
+  const goHome = () => setStep(0); // 입력 중에도 첫 페이지(인트로)로 즉시 이동
 
   const totals = useMemo(() => {
     const inc = sum(data.income);
@@ -546,13 +657,14 @@ function MonthlyWizard() {
     themeToggle: { position: 'fixed', top: isMobile ? 16 : 24, right: isMobile ? 16 : 24, width: 44, height: 44, borderRadius: '50%', background: T.card, border: `1.5px solid ${T.border}`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.text, zIndex: 10, WebkitTapHighlightColor: 'transparent' },
     container: { maxWidth: 640, margin: '0 auto' },
     progressWrap: { marginBottom: isMobile ? 28 : 40 },
-    progressTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 },
+    progressTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
     progressMonth: { fontSize: 12, letterSpacing: 0.5, color: T.textMuted, fontWeight: 600 },
     progressCount: { fontSize: 12, color: T.textMuted, fontWeight: 600, fontVariantNumeric: 'tabular-nums', letterSpacing: 0.5 },
     progressBar: { height: 3, background: T.borderSoft, overflow: 'hidden', borderRadius: 999 },
     progressFill: { height: '100%', transition: 'width 0.4s, background 0.3s', borderRadius: 999 },
     stepDots: { display: 'flex', gap: 6, marginTop: 16, justifyContent: 'center', flexWrap: 'wrap' },
     stepDot: (active, done, color) => ({ width: isMobile ? 34 : 30, height: isMobile ? 34 : 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, background: active || done ? color : 'transparent', color: done || active ? '#FFFFFF' : T.textFaint, border: `1.5px solid ${done || active ? color : T.border}`, opacity: done ? 0.45 : 1, cursor: 'pointer', padding: 0, fontFamily: sans, WebkitTapHighlightColor: 'transparent' }),
+    homeBtn: { width: 28, height: 28, borderRadius: '50%', border: `1.5px solid ${T.border}`, background: T.card, color: T.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, WebkitTapHighlightColor: 'transparent', flexShrink: 0 },
     header: { textAlign: 'center', marginBottom: isMobile ? 28 : 40 },
     accentBar: { width: 32, height: 4, margin: '0 auto 18px', borderRadius: 999 },
     eyebrow: { fontSize: 12, letterSpacing: 1, marginBottom: 14, fontWeight: 700 },
@@ -626,17 +738,39 @@ function MonthlyWizard() {
       const m = allData.months[k] || {};
       return { month: k, value: sum(m.income) - computeExpense(m) };
     });
+    // 식비 세부 (배달/외식/집밥) stacked 데이터
+    const foodStackedData = monthKeys.map(k => {
+      const m = allData.months[k] || {};
+      return {
+        month: k,
+        values: {
+          delivery: sumList(m.food?.deliveryList),
+          dining: sumList(m.food?.diningList),
+          groceries: sumList(m.food?.groceriesList),
+        }
+      };
+    });
+    const foodSeries = [
+      { key: 'delivery', label: '배달', color: FOOD_SERIES_COLORS[themeMode].delivery },
+      { key: 'dining', label: '외식', color: FOOD_SERIES_COLORS[themeMode].dining },
+      { key: 'groceries', label: '집밥', color: FOOD_SERIES_COLORS[themeMode].groceries },
+    ];
 
     const sections = [
       { key: 'income', label: '수입', data: computeCat('income'), color: C.income },
-      { key: 'cards', label: '지출 정산', data: monthKeys.map(k => ({ month: k, value: sumCards(allData.months[k]) })), color: C.cards, note: '카드 + 현금 − 마이너스' },
+      // 수정 5: '지출 정산' → '총 지출' (지출 정산 + 월세·LH + 유리 정산)
+      { key: 'expense', label: '총 지출', data: monthKeys.map(k => ({ month: k, value: computeExpense(allData.months[k]) })), color: C.cards, note: '지출 정산 + 월세·LH + 유리 정산' },
       { key: 'utilities', label: '공과금', data: computeCat('utilities'), color: C.utilities },
-      { key: 'food', label: '식비', data: computeCat('food'), color: C.food, note: '기록만 — 지출 합계에 미포함' },
+      // 수정 6: 식비 - 배달/외식/집밥 stacked
+      { key: 'food', label: '식비', isStacked: true, stackedData: foodStackedData, series: foodSeries, color: C.food, note: '배달 · 외식 · 집밥 (총 지출 미포함)' },
       { key: 'yuri', label: '유리 정산', data: computeCat('yuri'), color: C.yuri },
-      { key: 'balance', label: '잔액', data: balanceData, color: { main: T.text, soft: T.cardAlt }, allowNegative: true, note: '수입 − (지출 정산 + 월세·LH + 유리 정산)' },
+      { key: 'balance', label: '잔액', data: balanceData, color: { main: T.text, soft: T.cardAlt }, allowNegative: true, note: '수입 − 총 지출' },
     ];
 
-    const totalActivity = sections.reduce((a, s) => a + s.data.reduce((b, d) => b + Math.abs(d.value), 0), 0);
+    const totalActivity = sections.reduce((a, s) => {
+      if (s.isStacked) return a + s.stackedData.reduce((b, d) => b + Object.values(d.values).reduce((x, y) => x + Math.abs(y), 0), 0);
+      return a + s.data.reduce((b, d) => b + Math.abs(d.value), 0);
+    }, 0);
     const hasAnyData = totalActivity > 0;
 
     return (
@@ -650,18 +784,38 @@ function MonthlyWizard() {
             <button onClick={() => setShowReport(false)} aria-label="돌아가기" style={{ width: 40, height: 40, borderRadius: '50%', border: `1.5px solid ${T.border}`, background: T.card, color: T.text, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', WebkitTapHighlightColor: 'transparent', flexShrink: 0 }}>
               <ChevronLeft size={16} strokeWidth={2.5} />
             </button>
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: 11, color: T.textMuted, fontWeight: 700, letterSpacing: 1.5, marginBottom: 2 }}>REPORT</div>
               <h1 style={{ fontSize: isMobile ? 28 : 34, fontWeight: 800, lineHeight: 1.1, margin: 0, letterSpacing: '-0.03em', color: T.text }}>월별 리포트</h1>
             </div>
           </div>
 
-          <div style={{ fontSize: 12, color: T.textMuted, marginBottom: isMobile ? 20 : 28, fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
-            {monthKeys.length === 0
-              ? '데이터 없음'
-              : monthKeys.length === 1
-                ? `${monthLabel(monthKeys[0])} · 1개월`
-                : `${monthLabel(monthKeys[0])} – ${monthLabel(monthKeys[monthKeys.length - 1])} · ${monthKeys.length}개월`}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: isMobile ? 20 : 28 }}>
+            <div style={{ fontSize: 12, color: T.textMuted, fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
+              {monthKeys.length === 0
+                ? '데이터 없음'
+                : monthKeys.length === 1
+                  ? `${monthLabel(monthKeys[0])} · 1개월`
+                  : `${monthLabel(monthKeys[0])} – ${monthLabel(monthKeys[monthKeys.length - 1])} · ${monthKeys.length}개월`}
+            </div>
+            {/* 수정 4: 꺾은선(추세선) 토글 버튼 */}
+            <button
+              onClick={() => setShowLine(s => !s)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '7px 13px', borderRadius: 999,
+                border: `1.5px solid ${showLine ? T.text : T.border}`,
+                background: showLine ? T.text : T.card,
+                color: showLine ? T.invertText : T.textMuted,
+                fontSize: 11, fontWeight: 700, letterSpacing: 0.3,
+                cursor: 'pointer', fontFamily: sans, WebkitTapHighlightColor: 'transparent',
+                flexShrink: 0,
+              }}
+              aria-label="추세선 토글"
+            >
+              <Activity size={12} strokeWidth={2.5} />
+              {showLine ? '추세선 ON' : '추세선'}
+            </button>
           </div>
 
           {!hasAnyData ? (
@@ -674,9 +828,17 @@ function MonthlyWizard() {
             </div>
           ) : (
             sections.map(s => {
-              const nonZero = s.data.filter(d => d.value !== 0);
-              const total = s.data.reduce((a, b) => a + b.value, 0);
-              const avg = nonZero.length > 0 ? total / nonZero.length : 0;
+              let total, avg;
+              if (s.isStacked) {
+                const totals = s.stackedData.map(d => Object.values(d.values).reduce((a, b) => a + b, 0));
+                total = totals.reduce((a, b) => a + b, 0);
+                const nz = totals.filter(t => t !== 0);
+                avg = nz.length > 0 ? total / nz.length : 0;
+              } else {
+                const nonZero = s.data.filter(d => d.value !== 0);
+                total = s.data.reduce((a, b) => a + b.value, 0);
+                avg = nonZero.length > 0 ? total / nonZero.length : 0;
+              }
               return (
                 <div key={s.key} style={{ background: T.card, border: `1.5px solid ${T.border}`, borderRadius: 16, padding: isMobile ? '20px 16px' : '24px 22px', marginBottom: 14, borderTop: `4px solid ${s.color.main}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 }}>
@@ -694,7 +856,10 @@ function MonthlyWizard() {
                       <div style={{ fontSize: 10, color: T.textFaint, marginTop: 2, fontWeight: 600, letterSpacing: 0.3 }}>누적</div>
                     </div>
                   </div>
-                  <BarChart data={s.data} color={s.color} T={T} isMobile={isMobile} sans={sans} allowNegative={s.allowNegative} />
+                  {s.isStacked
+                    ? <StackedBarChart data={s.stackedData} series={s.series} T={T} isMobile={isMobile} sans={sans} showLine={showLine} />
+                    : <BarChart data={s.data} color={s.color} T={T} isMobile={isMobile} sans={sans} allowNegative={s.allowNegative} showLine={showLine} />
+                  }
                 </div>
               );
             })
@@ -811,6 +976,17 @@ function MonthlyWizard() {
           <button style={{ ...styles.btn, ...styles.btnPrimary, padding: isMobile ? '17px 40px' : '20px 56px', fontSize: 14, width: isMobile ? '100%' : 'auto' }} onClick={goNext}>
             {isCurrentFinalized ? '이어서 보기' : '시작하기'} <ChevronRight size={16} strokeWidth={2.5} />
           </button>
+
+          {/* 수정 2: Intro에서도 바로 월별 리포트 보기 */}
+          <div style={{ marginTop: 12 }}>
+            <button
+              onClick={() => setShowReport(true)}
+              style={{ ...styles.btn, ...styles.btnGhost, padding: isMobile ? '14px 28px' : '14px 36px', fontSize: 13, border: `1.5px solid ${T.border}`, color: T.text, width: isMobile ? '100%' : 'auto' }}
+            >
+              📊 월별 리포트 보기
+            </button>
+          </div>
+
           <div style={{ marginTop: 18, fontSize: 11, color: T.textFaint, letterSpacing: 0.3, fontWeight: 500 }}>
             💾 자동 저장됨 · 새로고침해도 유지
           </div>
@@ -978,11 +1154,17 @@ function MonthlyWizard() {
     <div style={styles.page}>
       <ThemeToggle />
       <SavedToast />
-        <SyncIndicator />
+      <SyncIndicator />
       <div style={styles.container}>
         <div style={styles.progressWrap}>
           <div style={styles.progressTop}>
-            <span style={styles.progressMonth}>{monthLabel(currentKey)}</span>
+            {/* 수정 3: 입력 중 어디서든 홈(첫 페이지)으로 가는 버튼 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button onClick={goHome} aria-label="처음으로" style={styles.homeBtn}>
+                <Home size={13} strokeWidth={2.25} />
+              </button>
+              <span style={styles.progressMonth}>{monthLabel(currentKey)}</span>
+            </div>
             <span style={styles.progressCount}>{String(step).padStart(2,'0')} / {String(STEPS.length-1).padStart(2,'0')}</span>
           </div>
           <div style={styles.progressBar}>
