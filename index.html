@@ -97,6 +97,7 @@ const COLORS = {
     yuri: { main: '#9333EA', soft: '#F3E8FF' },
     unexpected: { main: '#DC2626', soft: '#FEE2E2' },
     review: { main: '#18181B', soft: '#F4F4F5' },
+    assets: { main: '#334155', soft: '#F1F5F9' },
   },
   dark: {
     intro: { main: '#FAFAFA', soft: '#1F1F23' },
@@ -107,6 +108,7 @@ const COLORS = {
     yuri: { main: '#C084FC', soft: '#241432' },
     unexpected: { main: '#F87171', soft: '#2D1414' },
     review: { main: '#FAFAFA', soft: '#1F1F23' },
+    assets: { main: '#94A3B8', soft: '#1E293B' },
   },
 };
 // 식비 세부 시리즈 색상 (파스텔 코랄 / 머스타드 / 민트 — hue 분리 + 동일 명도로 조화)
@@ -588,6 +590,7 @@ function MonthlyWizard() {
         food: { deliveryList: [], diningList: [], groceriesList: [] },
         yuri: { ...prevData.yuri, extraList: [] },
         unexpected: [],
+        totalAssets: prevData.totalAssets || 0, // 전월 자산을 시드 (사용자가 수정 가능)
         finalized: false,
       } : emptyMonth();
       const next = { ...prev, months: { ...prev.months, [currentKey]: newMonth } };
@@ -602,15 +605,19 @@ function MonthlyWizard() {
   const prevKey = shiftMonth(currentKey, -1);
   const prevData = allData.months[prevKey] || emptyMonth();
   const isCurrentFinalized = !!data.finalized;
-  const totalAssets = allData.totalAssets || 0;
+  // 현재 선택된 월의 자산값. 월별 값이 없으면 글로벌 값으로 fallback (기존 데이터 호환)
+  const totalAssets = (data.totalAssets !== undefined && data.totalAssets !== null)
+    ? data.totalAssets
+    : (allData.totalAssets || 0);
+  // 전월 자산 (Intro 화면에 변동 표시용)
+  const prevTotalAssets = (prevData.totalAssets !== undefined && prevData.totalAssets !== null)
+    ? prevData.totalAssets
+    : 0;
 
+  // 총 자산은 이제 월별로 저장 (예전엔 글로벌이었으나 매달 추적 가능하도록 변경)
   const updateTotalAssets = (val) => {
     const num = val === '' ? 0 : parseInt(String(val).replace(/[^0-9]/g, ''), 10) || 0;
-    setAllData(prev => {
-      const next = { ...prev, totalAssets: num };
-      storage.save(next);
-      return next;
-    });
+    updateMonth(m => ({ ...m, totalAssets: num }));
   };
 
   const updateMonth = (mutator) => {
@@ -811,8 +818,15 @@ function MonthlyWizard() {
       { key: 'dining', label: '외식', color: FOOD_SERIES_COLORS[themeMode].dining },
       { key: 'groceries', label: '집밥', color: FOOD_SERIES_COLORS[themeMode].groceries },
     ];
+    // 자산 추세 데이터: 월별로 저장된 totalAssets 값
+    const assetsData = monthKeys.map(k => ({
+      month: k,
+      value: allData.months[k]?.totalAssets || 0,
+    }));
 
     const sections = [
+      // 자산은 'stock' (상태량) — 누적 합계가 아니라 매달의 잔고. isStock 플래그로 처리.
+      { key: 'assets', label: '총 자산', data: assetsData, color: C.assets, note: '월말 기준 자산 추이', isStock: true },
       { key: 'income', label: '수입', data: computeCat('income'), color: C.income },
       // 수정 5: '지출 정산' → '총 지출' (지출 정산 + 월세·LH + 유리 정산)
       { key: 'expense', label: '총 지출', data: monthKeys.map(k => ({ month: k, value: computeExpense(allData.months[k]) })), color: C.cards, note: '지출 정산 + 월세·LH + 유리 정산' },
@@ -895,6 +909,13 @@ function MonthlyWizard() {
                 total = s.data.reduce((a, b) => a + b.value, 0);
                 avg = nonZero.length > 0 ? total / nonZero.length : 0;
               }
+              // isStock(상태량, 예: 자산): 합계는 의미 없으므로 '가장 최근의 0이 아닌 값'을 표시
+              const isStock = s.isStock;
+              const stockLatest = isStock
+                ? ([...s.data].reverse().find(d => d.value > 0)?.value || 0)
+                : 0;
+              const summaryValue = isStock ? stockLatest : total;
+              const summaryLabel = isStock ? '최근' : '누적';
               return (
                 <div key={s.key} style={{ background: T.card, border: `1.5px solid ${T.border}`, borderRadius: 16, padding: isMobile ? '20px 16px' : '24px 22px', marginBottom: 14, borderTop: `4px solid ${s.color.main}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 }}>
@@ -906,10 +927,10 @@ function MonthlyWizard() {
                       {s.note && <div style={{ fontSize: 10, color: T.textFaint, marginTop: 4, fontWeight: 500 }}>{s.note}</div>}
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: isMobile ? 16 : 19, fontWeight: 700, color: total < 0 ? T.diffUp : T.text, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.015em' }}>
-                        {total < 0 ? '−' : ''}{fmtShort(Math.abs(total))}
+                      <div style={{ fontSize: isMobile ? 16 : 19, fontWeight: 700, color: summaryValue < 0 ? T.diffUp : T.text, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.015em' }}>
+                        {summaryValue < 0 ? '−' : ''}{fmtShort(Math.abs(summaryValue))}
                       </div>
-                      <div style={{ fontSize: 10, color: T.textFaint, marginTop: 2, fontWeight: 600, letterSpacing: 0.3 }}>누적</div>
+                      <div style={{ fontSize: 10, color: T.textFaint, marginTop: 2, fontWeight: 600, letterSpacing: 0.3 }}>{summaryLabel}</div>
                     </div>
                   </div>
                   {s.isStacked
@@ -975,7 +996,7 @@ function MonthlyWizard() {
             </div>
             <div style={{ padding: isMobile ? '24px 16px' : '28px 24px', background: themeMode === 'light' ? '#FAFAFA' : '#1F1F23', textAlign: 'left' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: editingAssets ? 10 : 6 }}>
-                <div style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, letterSpacing: 0.3 }}>총 자산</div>
+                <div style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, letterSpacing: 0.3 }}>총 자산 · {monthLabel(currentKey)}</div>
                 <button
                   onClick={() => setEditingAssets(e => !e)}
                   style={{ fontSize: 10, color: editingAssets ? C.income.main : T.textFaint, fontWeight: 700, background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 8px', borderRadius: 6, fontFamily: sans, letterSpacing: 0.3, WebkitTapHighlightColor: 'transparent' }}
@@ -1008,6 +1029,22 @@ function MonthlyWizard() {
                   {totalAssets === 0 ? '입력하기' : fmtFull(totalAssets)}
                 </div>
               )}
+              {/* 전월 대비 자산 변동 표시 */}
+              {!editingAssets && totalAssets > 0 && prevTotalAssets > 0 && (() => {
+                const diff = totalAssets - prevTotalAssets;
+                if (diff === 0) return (
+                  <div style={{ fontSize: 11, color: T.textFaint, marginTop: 8, fontWeight: 600, letterSpacing: 0.2 }}>
+                    전월 동일
+                  </div>
+                );
+                const up = diff > 0;
+                return (
+                  <div style={{ fontSize: 11, color: up ? T.diffDown : T.diffUp, marginTop: 8, fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: 0.2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {up ? <TrendingUp size={11} strokeWidth={2.5} /> : <TrendingDown size={11} strokeWidth={2.5} />}
+                    전월 대비 {up ? '+' : '−'}{fmtMCH(Math.abs(diff))}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
