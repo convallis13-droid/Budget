@@ -109,10 +109,10 @@ const COLORS = {
     review: { main: '#FAFAFA', soft: '#1F1F23' },
   },
 };
-// 식비 세부 시리즈 색상 (배달=진함, 외식=중간, 집밥=연함)
+// 식비 세부 시리즈 색상 (파스텔 코랄 / 머스타드 / 민트 — hue 분리 + 동일 명도로 조화)
 const FOOD_SERIES_COLORS = {
-  light: { delivery: '#9A3412', dining: '#EA580C', groceries: '#FB923C' },
-  dark:  { delivery: '#F97316', dining: '#FB923C', groceries: '#FDBA74' },
+  light: { delivery: '#F87171', dining: '#FBBF24', groceries: '#6EE7B7' },
+  dark:  { delivery: '#FCA5A5', dining: '#FCD34D', groceries: '#A7F3D0' },
 };
 const THEMES = {
   light: { bg: '#FAFAFA', card: '#FFFFFF', cardAlt: '#F4F4F5', text: '#09090B', textMuted: '#52525B', textFaint: '#A1A1AA', border: '#E4E4E7', borderSoft: '#F1F1F4', inputBg: '#F4F4F5', inputBorder: '#E4E4E7', invertBg: '#09090B', invertText: '#FAFAFA', invertBorder: 'rgba(250,250,250,0.12)', diffUp: '#DC2626', diffDown: '#059669' },
@@ -126,7 +126,7 @@ const FIELDS = {
   ],
   cards: [
     { key: 'hyundai_naver', label: '현대카드' },
-    { key: 'kookmin_coupang', label: '국민 쿠팡' },
+    { key: 'kookmin_coupang', label: '국민카드' },
     { key: 'samsung', label: '삼성카드' },
     { key: 'lotte', label: '롯데카드' },
     { key: 'cash', label: '현금' },
@@ -141,7 +141,7 @@ const FIELDS = {
   food: [
     { type: 'dynamicGroup', key: 'delivery', listKey: 'deliveryList', label: '배달', placeholder: '메모 (선택)' },
     { type: 'dynamicGroup', key: 'dining', listKey: 'diningList', label: '외식', placeholder: '메모 (선택)' },
-    { type: 'dynamicGroup', key: 'groceries', listKey: 'groceriesList', label: '집밥 (장보기)', placeholder: '메모 (선택)' },
+    { type: 'dynamicGroup', key: 'groceries', listKey: 'groceriesList', label: '집밥', placeholder: '메모 (선택)' },
   ],
   yuri: [
     { type: 'group', key: 'insurance', label: '보험', children: [
@@ -221,9 +221,26 @@ const storage = {
   _pending: null,
   _lastWrittenAt: 0,
   _onStatus: () => {},
+  // ===== 안전장치용 상태 =====
+  _hasReceivedServerSnapshot: false, // 서버에서 데이터를 한 번이라도 받았는가
+  _lastServerMonthCount: 0,          // 마지막으로 본 서버의 month 개수 (sanity check)
   setStatusListener(fn) { this._onStatus = fn || (() => {}); },
   // 변경사항을 600ms 디바운스 후 Firestore에 저장
   save(data) {
+    // [안전장치 A] 서버 데이터를 한 번이라도 받기 전엔 절대 저장하지 않음
+    // - 인증 실패/네트워크 실패/race condition 상황에서 빈 상태로 덮어쓰는 사고 방지
+    if (!this._hasReceivedServerSnapshot) {
+      console.warn('[guard] 서버 데이터 수신 전 — 저장 차단됨');
+      return;
+    }
+    // [안전장치 B] 월 개수가 줄어드는 저장은 거부 (대량 데이터 손실 방지)
+    // - 사용자가 입력 중인 한 month 개수는 늘어나거나 같아야 정상
+    const newCount = Object.keys((data && data.months) || {}).length;
+    if (this._lastServerMonthCount > 0 && newCount < this._lastServerMonthCount) {
+      console.error('[guard] 월 데이터 손실 위험: ' + this._lastServerMonthCount + ' → ' + newCount + ' (저장 차단)');
+      this._onStatus('error');
+      return;
+    }
     this._pending = data;
     this._onStatus('syncing');
     clearTimeout(this._saveTimer);
@@ -234,6 +251,8 @@ const storage = {
         const payload = { ...this._pending, _updatedAt: ts };
         this._lastWrittenAt = ts;
         await docRef().set(payload);
+        // echo는 onSnapshot에서 무시되므로 카운트를 직접 갱신
+        this._lastServerMonthCount = Object.keys(payload.months || {}).length;
         this._onStatus('saved');
       } catch (e) {
         console.error('Firestore 저장 실패:', e);
@@ -245,22 +264,34 @@ const storage = {
   // 본인이 방금 쓴 데이터는 timestamp가 일치하므로 echo로 인식해서 무시합니다.
   subscribe(onData, onError) {
     let isFirst = true;
-    return docRef().onSnapshot(
-      (snap) => {
-        const raw = snap.exists ? snap.data() : null;
-        // 본인의 echo는 무시 (이미 state에 반영되어 있음). 단, 첫 로드는 반영.
-        if (!isFirst && raw && raw._updatedAt === this._lastWrittenAt) {
-          return;
+    let unsubFn = null;
+    // [안전장치 C] 인증이 성공한 후에만 구독 시작
+    // - 인증 전에 onSnapshot이 권한 에러로 즉시 실패해서 빈 상태가 되는 race 차단
+    authReady.then(() => {
+      unsubFn = docRef().onSnapshot(
+        (snap) => {
+          const raw = snap.exists ? snap.data() : null;
+          // 본인의 echo는 무시 (이미 state에 반영되어 있음). 단, 첫 로드는 반영.
+          if (!isFirst && raw && raw._updatedAt === this._lastWrittenAt) {
+            return;
+          }
+          const merged = { months: {}, totalAssets: 0, ...(raw || {}) };
+          // 서버 데이터를 받은 시점부터 비로소 저장 허용
+          this._hasReceivedServerSnapshot = true;
+          this._lastServerMonthCount = Object.keys(merged.months || {}).length;
+          isFirst = false;
+          onData(merged);
+        },
+        (err) => {
+          console.error('Firestore 구독 오류:', err);
+          if (onError) onError(err);
         }
-        const merged = { months: {}, totalAssets: 0, ...(raw || {}) };
-        isFirst = false;
-        onData(merged);
-      },
-      (err) => {
-        console.error('Firestore 구독 오류:', err);
-        if (onError) onError(err);
-      }
-    );
+      );
+    }).catch(err => {
+      console.error('인증 실패:', err);
+      if (onError) onError(err);
+    });
+    return () => { if (unsubFn) { try { unsubFn(); } catch (_) {} } };
   },
 };
 
@@ -377,16 +408,7 @@ function StackedBarChart({ data, series, T, isMobile, sans, showLine }) {
   const scale = (v) => (v / maxTotal) * chartH;
   const hasAnyValue = totals.some(t => t > 0);
 
-  // 꺾은선용 합계 좌표
-  const linePoints = data.map((d, i) => {
-    const x = PAD.left + i * (barWidth + barGap) + barWidth / 2;
-    const y = PAD.top + chartH - scale(totals[i]);
-    return { x, y, value: totals[i] };
-  });
-  const lineStr = linePoints.map(p => `${p.x},${p.y}`).join(' ');
-
-  // 가장 진한 시리즈 색 (꺾은선 색으로 사용)
-  const lineColor = series[0]?.color || T.text;
+  // 꺾은선은 항목별로 따로 그립니다 — 아래 showLine 블록에서 series.map으로 직접 좌표 계산
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
@@ -420,15 +442,26 @@ function StackedBarChart({ data, series, T, isMobile, sans, showLine }) {
       })}
       {showLine && hasAnyValue && (
         <g>
-          <polyline points={lineStr} fill="none" stroke={lineColor} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-          {linePoints.map((p, i) => p.value > 0 && (
-            <g key={i}>
-              <circle cx={p.x} cy={p.y} r={3.5} fill={T.card} stroke={lineColor} strokeWidth={2} />
-              <text x={p.x} y={p.y - 8} textAnchor="middle" fontSize={isMobile ? 9 : 10} fill={lineColor} fontFamily={sans} fontWeight={700} fontVariantNumeric="tabular-nums">
-                {fmtShort(p.value)}
-              </text>
-            </g>
-          ))}
+          {series.map(s => {
+            // 항목별로 별도 추세선: 각 series의 절대값을 동일 scale로 그림
+            const seriesPoints = data.map((d, i) => {
+              const x = PAD.left + i * (barWidth + barGap) + barWidth / 2;
+              const v = d.values[s.key] || 0;
+              const y = PAD.top + chartH - scale(v);
+              return { x, y, value: v };
+            });
+            const hasValue = seriesPoints.some(p => p.value > 0);
+            if (!hasValue) return null;
+            const pointsStr = seriesPoints.map(p => `${p.x},${p.y}`).join(' ');
+            return (
+              <g key={s.key}>
+                <polyline points={pointsStr} fill="none" stroke={s.color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                {seriesPoints.map((p, i) => p.value > 0 && (
+                  <circle key={i} cx={p.x} cy={p.y} r={3} fill={T.card} stroke={s.color} strokeWidth={2} />
+                ))}
+              </g>
+            );
+          })}
         </g>
       )}
       {/* Legend */}
@@ -514,7 +547,9 @@ function MonthlyWizard() {
         setIsLoaded(true);
       },
       (err) => {
-        setIsLoaded(true); // 에러여도 일단 UI 진입
+        // [중요] 에러여도 isLoaded는 false 유지.
+        // true로 만들면 시드 useEffect가 빈 데이터를 만들어 서버에 덮어쓰는 사고로 이어집니다.
+        // 사용자는 로딩 화면에 머무르되, '다시 시도' 버튼을 누르도록 안내합니다.
         setSyncStatus('error');
       }
     );
@@ -536,8 +571,10 @@ function MonthlyWizard() {
     if (meta) meta.setAttribute('content', THEMES[themeMode].bg);
   }, [themeMode]);
 
-  // 현재 월 데이터 초기화: 데이터 없으면 전월 데이터 복사해서 시드
-  // (Firestore 초기 로드 완료 후에만 실행 — 그렇지 않으면 빈 데이터로 덮어쓸 위험)
+  // 현재 월 데이터 초기화: 데이터 없으면 전월 데이터 복사해서 로컬 state에만 시드
+  // [중요] 시드 단계에선 서버에 저장하지 않습니다.
+  // 사용자가 실제로 무언가 입력해야 비로소 updateMonth 등이 발동되어 저장됩니다.
+  // 이렇게 해서 "앱을 열기만 해도 빈 데이터로 덮어써지는" 사고를 원천 차단합니다.
   useEffect(() => {
     if (!isLoaded) return;
     setAllData(prev => {
@@ -554,7 +591,7 @@ function MonthlyWizard() {
         finalized: false,
       } : emptyMonth();
       const next = { ...prev, months: { ...prev.months, [currentKey]: newMonth } };
-      storage.save(next);
+      // storage.save(next) 호출하지 않음 — 빈/시드 상태로 서버를 덮어쓰는 사고 방지
       return next;
     });
   }, [currentKey, isLoaded]);
@@ -720,11 +757,30 @@ function MonthlyWizard() {
   };
 
   // ===== 초기 로딩 화면 (Firestore 첫 로드 대기) =====
+  // 에러 시에도 isLoaded는 false로 두기 때문에 이 화면에 머무릅니다.
+  // 사용자 데이터를 보호하기 위해 입력 UI 자체를 차단합니다.
   if (!isLoaded) {
+    const isError = syncStatus === 'error';
     return (
-      <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: T.bg, color: T.textMuted, fontSize: 13, fontWeight: 600, letterSpacing: 0.5, gap: 12 }}>
-        <div style={{ width: 28, height: 28, border: `2.5px solid ${T.border}`, borderTopColor: T.text, borderRadius: '50%', animation: 'budget-spin 0.8s linear infinite' }} />
-        <div>가계부 불러오는 중…</div>
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: T.bg, color: T.textMuted, fontSize: 13, fontWeight: 600, letterSpacing: 0.5, gap: 14, padding: 24, boxSizing: 'border-box', textAlign: 'center' }}>
+        {isError ? (
+          <React.Fragment>
+            <div style={{ fontSize: 32 }}>⚠️</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: T.diffUp }}>데이터 연결 실패</div>
+            <div style={{ fontSize: 12, color: T.textMuted, lineHeight: 1.6, maxWidth: 300, fontWeight: 500 }}>
+              네트워크 또는 인증 문제로 가계부를 불러오지 못했어요.<br />
+              <span style={{ color: T.text, fontWeight: 700 }}>데이터 보호를 위해 입력은 차단됐어요.</span>
+            </div>
+            <button onClick={() => window.location.reload()} style={{ marginTop: 4, padding: '10px 22px', borderRadius: 999, border: '1.5px solid ' + T.border, background: T.card, color: T.text, fontWeight: 700, cursor: 'pointer', fontFamily: '"Pretendard Variable", sans-serif', fontSize: 13 }}>
+              다시 시도
+            </button>
+          </React.Fragment>
+        ) : (
+          <React.Fragment>
+            <div style={{ width: 28, height: 28, border: '2.5px solid ' + T.border, borderTopColor: T.text, borderRadius: '50%', animation: 'budget-spin 0.8s linear infinite' }} />
+            <div>가계부 불러오는 중…</div>
+          </React.Fragment>
+        )}
         <style>{`@keyframes budget-spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
