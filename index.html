@@ -131,7 +131,7 @@ const FIELDS = {
     { key: 'kookmin_coupang', label: '국민카드' },
     { key: 'samsung', label: '삼성카드' },
     { key: 'lotte', label: '롯데카드' },
-    { key: 'cash', label: '현금' },
+    { type: 'dynamicGroup', key: 'cash', listKey: 'cashList', label: '현금', placeholder: '메모 (예: 마트, 택시)' },
     { key: 'minus', label: '마이너스', sub: '카드 지출했으나 현금으로 돌려받은 내역', subtract: true },
   ],
   utilities: [
@@ -204,7 +204,7 @@ const todayKey = () => { const d = new Date(); return monthKey(d.getFullYear(), 
 // 빈 월 템플릿
 const emptyMonth = () => ({
   income: { yuri: 0, hyunwoo: 0, etcList: [] },
-  cards: { hyundai_naver: 0, kookmin_coupang: 0, samsung: 0, lotte: 0, cash: 0, minus: 0 },
+  cards: { hyundai_naver: 0, kookmin_coupang: 0, samsung: 0, lotte: 0, cash: 0, cashList: [], minus: 0 },
   utilities: { mgmt: 0, gas: 0, rent: 0, lh: 0 },
   food: { deliveryList: [], diningList: [], groceriesList: [] },
   yuri: {
@@ -309,10 +309,10 @@ const sum = (obj) => {
 const sumKeys = (obj, keys) => keys.reduce((a, k) => a + (obj?.[k] || 0), 0);
 const sumList = (list) => (list || []).reduce((a, b) => a + (b.amount || 0), 0);
 
-// 지출 정산 합계: 카드 4개 + 현금 − 마이너스(현금 환급분)
+// 지출 정산 합계: 카드 4개 + 현금(단일 레거시 + cashList) − 마이너스(현금 환급분)
 const sumCards = (m) => {
   const c = (m && m.cards) || {};
-  return (c.hyundai_naver || 0) + (c.kookmin_coupang || 0) + (c.samsung || 0) + (c.lotte || 0) + (c.cash || 0) - (c.minus || 0);
+  return (c.hyundai_naver || 0) + (c.kookmin_coupang || 0) + (c.samsung || 0) + (c.lotte || 0) + (c.cash || 0) + sumList(c.cashList) - (c.minus || 0);
 };
 // 총 지출 공식: 지출 정산(카드+현금−마이너스) + 월세 + LH + 유리 정산 합계
 const computeExpense = (m) => {
@@ -585,7 +585,7 @@ function MonthlyWizard() {
       const prevData = prev.months[prevKey];
       const newMonth = prevData ? {
         income: { yuri: prevData.income?.yuri || 0, hyunwoo: prevData.income?.hyunwoo || 0, etcList: [] },
-        cards: { ...(prevData.cards || {}) },
+        cards: { ...(prevData.cards || {}), cashList: [] },
         utilities: { ...prevData.utilities },
         food: { deliveryList: [], diningList: [], groceriesList: [] },
         yuri: { ...prevData.yuri, extraList: [] },
@@ -598,6 +598,26 @@ function MonthlyWizard() {
       return next;
     });
   }, [currentKey, isLoaded]);
+
+  // [레거시 마이그레이션] 예전 단일값 cards.cash (숫자) 를 cashList 항목으로 자동 변환
+  // - 토글식 다중 입력으로 바뀐 뒤에도 기존 데이터가 UI에서 사라지지 않도록 함
+  // - legacyCash > 0 이고 cashList가 비어있을 때만 1회 동작 (변환 후 조건이 깨지므로 루프 안전)
+  useEffect(() => {
+    if (!isLoaded) return;
+    const c = (allData.months[currentKey] || {}).cards || {};
+    const legacyCash = c.cash || 0;
+    const list = c.cashList || [];
+    if (legacyCash > 0 && list.length === 0) {
+      updateMonth(m => ({
+        ...m,
+        cards: {
+          ...(m.cards || {}),
+          cash: 0,
+          cashList: [{ id: Date.now(), label: '', amount: legacyCash }],
+        },
+      }));
+    }
+  }, [currentKey, isLoaded, allData.months[currentKey]?.cards?.cash, allData.months[currentKey]?.cards?.cashList?.length]);
 
   const T = THEMES[themeMode];
   const C = COLORS[themeMode];
@@ -1370,7 +1390,12 @@ function MonthlyWizard() {
                   ...(data.income?.etcList || []).map(it => ({ label: it.label || '기타', val: it.amount })),
                 ]}
                 color={C.income} T={T} sans={sans} />
-              <ReviewBlock label="지출 정산" total={sumCards(data)} prev={sumCards(prevData)} items={FIELDS.cards.map(f => ({ label: f.label, val: data.cards?.[f.key] || 0, subtract: f.subtract }))} color={C.cards} T={T} sans={sans} />
+              <ReviewBlock label="지출 정산" total={sumCards(data)} prev={sumCards(prevData)} items={FIELDS.cards.map(f => {
+                if (f.type === 'dynamicGroup') {
+                  return { label: f.label, val: sumList(data.cards?.[f.listKey] || []) + (data.cards?.[f.key] || 0) };
+                }
+                return { label: f.label, val: data.cards?.[f.key] || 0, subtract: f.subtract };
+              })} color={C.cards} T={T} sans={sans} />
               <ReviewBlock label="공과금" total={sum(data.utilities)} prev={sum(prevData.utilities)} items={FIELDS.utilities.map(f => ({ label: f.label, val: data.utilities?.[f.key] || 0 }))} color={C.utilities} T={T} sans={sans} />
               <ReviewBlock label="식비" total={sum(data.food)} prev={sum(prevData.food)} items={FIELDS.food.map(f => ({ label: f.label, val: sumList(data.food?.[f.listKey] || []) }))} color={C.food} T={T} sans={sans} />
               <ReviewBlock label="유리 정산" total={sum(data.yuri)} prev={sum(prevData.yuri)}
