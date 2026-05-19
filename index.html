@@ -133,6 +133,12 @@ const FIELDS = {
     { key: 'lotte', label: '롯데카드' },
     { type: 'dynamicGroup', key: 'cash', listKey: 'cashList', label: '현금', placeholder: '메모 (예: 마트, 택시)' },
     { key: 'minus', label: '마이너스', sub: '카드 지출했으나 현금으로 돌려받은 내역', subtract: true },
+    { type: 'group', key: 'fixed', label: '고정 지출', sub: '매달 동일 · 잔액 계산에서 제외', fixed: true, children: [
+      { key: 'fixed_youth', label: '청년적금' },
+      { key: 'fixed_housing', label: '주택청약' },
+      { key: 'fixed_allowance', label: '용돈' },
+      { key: 'fixed_tithe', label: '십일조' },
+    ]},
   ],
   utilities: [
     { key: 'mgmt', label: '관리비' },
@@ -201,10 +207,20 @@ const shiftMonth = (k, delta) => {
 const monthLabel = (k) => { const { year, month } = parseKey(k); return `${year}년 ${month}월`; };
 const todayKey = () => { const d = new Date(); return monthKey(d.getFullYear(), d.getMonth() + 1); };
 
+// ============== 고정 지출 ==============
+// 매달 동일하게 적용되는 고정 지출 항목 (잔액 계산에서는 제외됨)
+const FIXED_KEYS = ['fixed_youth', 'fixed_housing', 'fixed_allowance', 'fixed_tithe'];
+const DEFAULT_FIXED = {
+  fixed_youth:     100000, // 청년적금 10만
+  fixed_housing:   100000, // 주택청약 10만
+  fixed_allowance: 400000, // 용돈 40만
+  fixed_tithe:     500000, // 십일조 50만
+};
+
 // 빈 월 템플릿
 const emptyMonth = () => ({
   income: { yuri: 0, hyunwoo: 0, etcList: [] },
-  cards: { hyundai_naver: 0, kookmin_coupang: 0, samsung: 0, lotte: 0, cash: 0, cashList: [], minus: 0 },
+  cards: { hyundai_naver: 0, kookmin_coupang: 0, samsung: 0, lotte: 0, cash: 0, cashList: [], minus: 0, ...DEFAULT_FIXED },
   utilities: { mgmt: 0, gas: 0, rent: 0, lh: 0 },
   food: { deliveryList: [], diningList: [], groceriesList: [] },
   yuri: {
@@ -309,10 +325,16 @@ const sum = (obj) => {
 const sumKeys = (obj, keys) => keys.reduce((a, k) => a + (obj?.[k] || 0), 0);
 const sumList = (list) => (list || []).reduce((a, b) => a + (b.amount || 0), 0);
 
-// 지출 정산 합계: 카드 4개 + 현금(단일 레거시 + cashList) − 마이너스(현금 환급분)
+// 고정 지출 합계 (legacy 데이터엔 키가 없을 수 있으므로 기본값으로 fallback)
+const sumFixed = (m) => {
+  const c = (m && m.cards) || {};
+  return FIXED_KEYS.reduce((a, k) => a + (c[k] !== undefined ? (c[k] || 0) : DEFAULT_FIXED[k]), 0);
+};
+
+// 지출 정산 합계: 카드 4개 + 현금(단일 레거시 + cashList) − 마이너스(현금 환급분) + 고정 지출
 const sumCards = (m) => {
   const c = (m && m.cards) || {};
-  return (c.hyundai_naver || 0) + (c.kookmin_coupang || 0) + (c.samsung || 0) + (c.lotte || 0) + (c.cash || 0) + sumList(c.cashList) - (c.minus || 0);
+  return (c.hyundai_naver || 0) + (c.kookmin_coupang || 0) + (c.samsung || 0) + (c.lotte || 0) + (c.cash || 0) + sumList(c.cashList) - (c.minus || 0) + sumFixed(m);
 };
 // 총 지출 공식: 지출 정산(카드+현금−마이너스) + 월세 + LH + 유리 정산 합계
 const computeExpense = (m) => {
@@ -532,7 +554,7 @@ function MonthlyWizard() {
     try { return localStorage.getItem('budget-theme') || 'light'; } catch { return 'light'; }
   });
   const [expandedGroups, setExpandedGroups] = useState({
-    insurance: true, etc: true, extras: true,
+    insurance: true, etc: true, extras: true, fixed: true,
     delivery: true, dining: true, groceries: true,
   });
   const [showSavedToast, setShowSavedToast] = useState(false);
@@ -619,6 +641,25 @@ function MonthlyWizard() {
     }
   }, [currentKey, isLoaded, allData.months[currentKey]?.cards?.cash, allData.months[currentKey]?.cards?.cashList?.length]);
 
+  // [고정지출 마이그레이션] FIXED_KEYS가 비어있는 월에 기본값을 채워 넣는다.
+  // - 처음 도입할 때 기존 월 데이터엔 fixed_* 키가 없으므로 0으로 보이는 문제를 방지
+  // - 키가 모두 존재하면 더 이상 실행되지 않으므로 루프 안전
+  useEffect(() => {
+    if (!isLoaded) return;
+    const m = allData.months[currentKey];
+    if (!m) return;
+    const c = m.cards || {};
+    const missingKeys = FIXED_KEYS.filter(k => c[k] === undefined);
+    if (missingKeys.length === 0) return;
+    updateMonth(m2 => ({
+      ...m2,
+      cards: {
+        ...(m2.cards || {}),
+        ...Object.fromEntries(missingKeys.map(k => [k, DEFAULT_FIXED[k]])),
+      },
+    }));
+  }, [currentKey, isLoaded, allData.months[currentKey]]);
+
   const T = THEMES[themeMode];
   const C = COLORS[themeMode];
   const data = allData.months[currentKey] || emptyMonth();
@@ -700,7 +741,9 @@ function MonthlyWizard() {
   const totals = useMemo(() => {
     const inc = sum(data.income);
     const exp = computeExpense(data);
-    return { inc, exp, balance: inc - exp };
+    const fixed = sumFixed(data);
+    // 잔액은 고정지출을 제외하고 계산 (총지출엔 포함됨)
+    return { inc, exp, fixed, balance: inc - (exp - fixed) };
   }, [data]);
 
   const prevTotals = useMemo(() => {
@@ -819,7 +862,8 @@ function MonthlyWizard() {
     const computeCat = (cat) => monthKeys.map(k => ({ month: k, value: sum(allData.months[k]?.[cat] || {}) }));
     const balanceData = monthKeys.map(k => {
       const m = allData.months[k] || {};
-      return { month: k, value: sum(m.income) - computeExpense(m) };
+      // 잔액은 고정지출을 제외하고 계산
+      return { month: k, value: sum(m.income) - (computeExpense(m) - sumFixed(m)) };
     });
     // 식비 세부 (배달/외식/집밥) stacked 데이터
     const foodStackedData = monthKeys.map(k => {
@@ -849,12 +893,12 @@ function MonthlyWizard() {
       { key: 'assets', label: '총 자산', data: assetsData, color: C.assets, note: '월말 기준 자산 추이', isStock: true },
       { key: 'income', label: '수입', data: computeCat('income'), color: C.income },
       // 수정 5: '지출 정산' → '총 지출' (지출 정산 + 월세·LH + 유리 정산)
-      { key: 'expense', label: '총 지출', data: monthKeys.map(k => ({ month: k, value: computeExpense(allData.months[k]) })), color: C.cards, note: '지출 정산 + 월세·LH + 유리 정산' },
+      { key: 'expense', label: '총 지출', data: monthKeys.map(k => ({ month: k, value: computeExpense(allData.months[k]) })), color: C.cards, note: '지출 정산 + 고정지출 + 월세·LH + 유리 정산' },
       { key: 'utilities', label: '공과금', data: computeCat('utilities'), color: C.utilities },
       // 수정 6: 식비 - 배달/외식/집밥 stacked
       { key: 'food', label: '식비', isStacked: true, stackedData: foodStackedData, series: foodSeries, color: C.food, note: '배달 · 외식 · 집밥 (총 지출 미포함)' },
       { key: 'yuri', label: '유리 정산', data: computeCat('yuri'), color: C.yuri },
-      { key: 'balance', label: '잔액', data: balanceData, color: { main: T.text, soft: T.cardAlt }, allowNegative: true, note: '수입 − 총 지출' },
+      { key: 'balance', label: '잔액', data: balanceData, color: { main: T.text, soft: T.cardAlt }, allowNegative: true, note: '수입 − 총 지출 (고정지출 제외)' },
     ];
 
     const totalActivity = sections.reduce((a, s) => {
@@ -1165,11 +1209,12 @@ function MonthlyWizard() {
             <div style={{ transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', display: 'flex', color: accent.main }}>
               <ChevronDown size={16} strokeWidth={2.5} />
             </div>
-            <div>
+              <div>
               <div style={{ fontSize: 16, fontWeight: 700, color: T.text, letterSpacing: '-0.01em' }}>
                 {group.label}
                 <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: accent.main, background: accent.soft, padding: '2px 8px', borderRadius: 999 }}>{group.children.length}</span>
               </div>
+              {group.sub && <div style={styles.fieldSub}>{group.sub}</div>}
               <div style={styles.prevHint}>전월 {fmt(prevTotal)}원</div>
             </div>
           </div>
@@ -1390,11 +1435,15 @@ function MonthlyWizard() {
                   ...(data.income?.etcList || []).map(it => ({ label: it.label || '기타', val: it.amount })),
                 ]}
                 color={C.income} T={T} sans={sans} />
-              <ReviewBlock label="지출 정산" total={sumCards(data)} prev={sumCards(prevData)} items={FIELDS.cards.map(f => {
+              <ReviewBlock label="지출 정산" total={sumCards(data)} prev={sumCards(prevData)} items={FIELDS.cards.flatMap(f => {
                 if (f.type === 'dynamicGroup') {
-                  return { label: f.label, val: sumList(data.cards?.[f.listKey] || []) + (data.cards?.[f.key] || 0) };
+                  return [{ label: f.label, val: sumList(data.cards?.[f.listKey] || []) + (data.cards?.[f.key] || 0) }];
                 }
-                return { label: f.label, val: data.cards?.[f.key] || 0, subtract: f.subtract };
+                if (f.type === 'group') {
+                  // 고정 지출 등 그룹: 그룹 합계로 표시
+                  return [{ label: f.label, val: sumKeys(data.cards || {}, f.children.map(c => c.key)) }];
+                }
+                return [{ label: f.label, val: data.cards?.[f.key] || 0, subtract: f.subtract }];
               })} color={C.cards} T={T} sans={sans} />
               <ReviewBlock label="공과금" total={sum(data.utilities)} prev={sum(prevData.utilities)} items={FIELDS.utilities.map(f => ({ label: f.label, val: data.utilities?.[f.key] || 0 }))} color={C.utilities} T={T} sans={sans} />
               <ReviewBlock label="식비" total={sum(data.food)} prev={sum(prevData.food)} items={FIELDS.food.map(f => ({ label: f.label, val: sumList(data.food?.[f.listKey] || []) }))} color={C.food} T={T} sans={sans} />
@@ -1423,11 +1472,14 @@ function MonthlyWizard() {
                   <span style={{ fontSize: isMobile ? 19 : 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>{fmt(totals.exp)}원</span>
                 </div>
                 <div style={{ fontSize: 10, opacity: 0.45, fontWeight: 500, marginBottom: 12, letterSpacing: 0.2 }}>
-                  지출 정산 {fmtShort(sumCards(data))} + 월세·LH {fmtShort((data.utilities?.rent || 0) + (data.utilities?.lh || 0))} + 유리 정산 {fmtShort(sum(data.yuri))}
+                  지출 정산 {fmtShort(sumCards(data) - sumFixed(data))} + 고정지출 {fmtShort(sumFixed(data))} + 월세·LH {fmtShort((data.utilities?.rent || 0) + (data.utilities?.lh || 0))} + 유리 정산 {fmtShort(sum(data.yuri))}
                 </div>
                 <div style={{ height: 1, background: T.invertBorder, margin: '18px 0' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <span style={{ fontSize: 13, letterSpacing: 0.5, fontWeight: 700 }}>이번 달 잔액</span>
+                  <div>
+                    <div style={{ fontSize: 13, letterSpacing: 0.5, fontWeight: 700 }}>이번 달 잔액</div>
+                    <div style={{ fontSize: 10, opacity: 0.45, fontWeight: 500, marginTop: 4, letterSpacing: 0.2 }}>고정지출 {fmtShort(sumFixed(data))} 제외</div>
+                  </div>
                   <span style={{ fontSize: isMobile ? 30 : 38, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.035em', color: totals.balance >= 0 ? T.invertText : (themeMode === 'light' ? '#FCA5A5' : '#F87171') }}>
                     {totals.balance >= 0 ? '+' : ''}{fmt(totals.balance)}
                   </span>
