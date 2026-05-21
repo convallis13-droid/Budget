@@ -134,8 +134,6 @@ const FIELDS = {
     { type: 'dynamicGroup', key: 'cash', listKey: 'cashList', label: '현금', placeholder: '메모 (예: 마트, 택시)' },
     { key: 'minus', label: '마이너스', sub: '카드 지출했으나 현금으로 돌려받은 내역', subtract: true },
     { type: 'group', key: 'fixed', label: '고정 지출', sub: '매달 동일 적용', fixed: true, children: [
-      { key: 'fixed_youth', label: '청년적금' },
-      { key: 'fixed_housing', label: '주택청약' },
       { key: 'fixed_allowance', label: '용돈' },
       { key: 'fixed_tithe', label: '십일조' },
     ]},
@@ -209,10 +207,8 @@ const todayKey = () => { const d = new Date(); return monthKey(d.getFullYear(), 
 
 // ============== 고정 지출 ==============
 // 매달 동일하게 적용되는 고정 지출 항목 (총 지출 · 잔액 계산에 모두 포함됨)
-const FIXED_KEYS = ['fixed_youth', 'fixed_housing', 'fixed_allowance', 'fixed_tithe'];
+const FIXED_KEYS = ['fixed_allowance', 'fixed_tithe'];
 const DEFAULT_FIXED = {
-  fixed_youth:     100000, // 청년적금 10만
-  fixed_housing:   100000, // 주택청약 10만
   fixed_allowance: 400000, // 용돈 40만
   fixed_tithe:     500000, // 십일조 50만
 };
