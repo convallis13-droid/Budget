@@ -207,15 +207,23 @@ const todayKey = () => { const d = new Date(); return monthKey(d.getFullYear(), 
 // ============== 고정 지출 ==============
 // 매달 동일하게 적용되는 고정 지출 항목 (총 지출 · 잔액 계산에 모두 포함됨)
 const FIXED_KEYS = ['fixed_allowance', 'fixed_tithe'];
-const DEFAULT_FIXED = {
-  fixed_allowance: 400000, // 용돈 40만
-  fixed_tithe:     500000, // 십일조 50만
-};
+// 용돈은 2026년 6월부터 40만 → 30만으로 변경. 그 이전 달은 그대로 40만 유지.
+const ALLOWANCE_CHANGE_KEY = '2026-06';
+const ALLOWANCE_BEFORE = 400000; // 변경 전 용돈 40만
+const ALLOWANCE_AFTER  = 300000; // 2026-06부터 용돈 30만
+const FIXED_TITHE      = 500000; // 십일조 50만 (변동 없음)
+// 해당 월 키 기준 기본 고정지출 값. 월 키가 2026-06 이상이면 용돈 30만.
+const getDefaultFixed = (key) => ({
+  fixed_allowance: (key && key >= ALLOWANCE_CHANGE_KEY) ? ALLOWANCE_AFTER : ALLOWANCE_BEFORE,
+  fixed_tithe:     FIXED_TITHE,
+});
+// legacy sumFixed fallback용 (키 자체가 없는 아주 오래된 데이터 대비)
+const DEFAULT_FIXED = { fixed_allowance: ALLOWANCE_BEFORE, fixed_tithe: FIXED_TITHE };
 
-// 빈 월 템플릿
-const emptyMonth = () => ({
+// 빈 월 템플릿 (월 키를 받아 용돈 기본값을 결정)
+const emptyMonth = (key) => ({
   income: { yuri: 0, hyunwoo: 0, etcList: [] },
-  cards: { hyundai_naver: 0, kookmin_coupang: 0, samsung: 0, lotte: 0, cash: 0, cashList: [], minus: 0, minusList: [], ...DEFAULT_FIXED },
+  cards: { hyundai_naver: 0, kookmin_coupang: 0, samsung: 0, lotte: 0, cash: 0, cashList: [], minus: 0, minusList: [], ...getDefaultFixed(key) },
   utilities: { mgmt: 0, gas: 0, rent: 0, lh: 0 },
   food: { deliveryList: [], diningList: [], groceriesList: [] },
   yuri: {
@@ -629,7 +637,7 @@ function MonthlyWizard() {
         unexpected: [],
         totalAssets: prevData.totalAssets || 0, // 전월 자산을 시드 (사용자가 수정 가능)
         finalized: false,
-      } : emptyMonth();
+      } : emptyMonth(currentKey);
       const next = { ...prev, months: { ...prev.months, [currentKey]: newMonth } };
       // storage.save(next) 호출하지 않음 — 빈/시드 상태로 서버를 덮어쓰는 사고 방지
       return next;
@@ -686,20 +694,37 @@ function MonthlyWizard() {
     const c = m.cards || {};
     const missingKeys = FIXED_KEYS.filter(k => c[k] === undefined);
     if (missingKeys.length === 0) return;
+    const fixedDefaults = getDefaultFixed(currentKey);
     updateMonth(m2 => ({
       ...m2,
       cards: {
         ...(m2.cards || {}),
-        ...Object.fromEntries(missingKeys.map(k => [k, DEFAULT_FIXED[k]])),
+        ...Object.fromEntries(missingKeys.map(k => [k, fixedDefaults[k]])),
       },
     }));
   }, [currentKey, isLoaded, allData.months[currentKey]]);
 
+  // [용돈 변경 마이그레이션] 2026-06 이후의 월에 이미 옛 기본값(40만)이 들어있으면 30만으로 갱신.
+  // - 정확히 옛 기본값(400000)일 때만 바꿔서, 사용자가 직접 넣은 값은 건드리지 않음
+  // - 갱신 후 값이 400000이 아니게 되므로 더 이상 실행되지 않음 (루프 안전)
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (currentKey < ALLOWANCE_CHANGE_KEY) return;
+    const m = allData.months[currentKey];
+    if (!m) return;
+    if ((m.cards || {}).fixed_allowance === ALLOWANCE_BEFORE) {
+      updateMonth(m2 => ({
+        ...m2,
+        cards: { ...(m2.cards || {}), fixed_allowance: ALLOWANCE_AFTER },
+      }));
+    }
+  }, [currentKey, isLoaded, allData.months[currentKey]]);
+
   const T = THEMES[themeMode];
   const C = COLORS[themeMode];
-  const data = allData.months[currentKey] || emptyMonth();
+  const data = allData.months[currentKey] || emptyMonth(currentKey);
   const prevKey = shiftMonth(currentKey, -1);
-  const prevData = allData.months[prevKey] || emptyMonth();
+  const prevData = allData.months[prevKey] || emptyMonth(prevKey);
   const isCurrentFinalized = !!data.finalized;
   // 현재 선택된 월의 자산값. 월별 값이 없으면 글로벌 값으로 fallback (기존 데이터 호환)
   const totalAssets = (data.totalAssets !== undefined && data.totalAssets !== null)
@@ -718,7 +743,7 @@ function MonthlyWizard() {
 
   const updateMonth = (mutator) => {
     setAllData(prev => {
-      const oldMonth = prev.months[currentKey] || emptyMonth();
+      const oldMonth = prev.months[currentKey] || emptyMonth(currentKey);
       const newMonth = { ...mutator(oldMonth), finalized: false };
       const next = { ...prev, months: { ...prev.months, [currentKey]: newMonth } };
       storage.save(next);
