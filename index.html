@@ -151,7 +151,6 @@ const FIELDS = {
   ],
   yuri: [
     { type: 'group', key: 'insurance', label: '보험', children: [
-      { key: 'ins_yuri_total', label: '유리종합' },
       { key: 'ins_yuri_teeth', label: '유리치아' },
       { key: 'ins_baby_total', label: '태아종합' },
       { key: 'ins_baby_silbi', label: '태아실비' },
@@ -227,7 +226,7 @@ const emptyMonth = (key) => ({
   utilities: { mgmt: 0, gas: 0, rent: 0, lh: 0 },
   food: { deliveryList: [], diningList: [], groceriesList: [] },
   yuri: {
-    ins_yuri_total: 0, ins_yuri_teeth: 0, ins_baby_total: 0, ins_baby_silbi: 0,
+    ins_yuri_teeth: 0, ins_baby_total: 0, ins_baby_silbi: 0,
     lotte_happiness: 0, telecom: 0, transit: 0,
     extraList: [],
   },
@@ -1516,7 +1515,7 @@ function MonthlyWizard() {
               <ReviewBlock label="식비" total={sum(data.food)} prev={sum(prevData.food)} items={FIELDS.food.map(f => ({ label: f.label, val: sumList(data.food?.[f.listKey] || []) }))} color={C.food} T={T} sans={sans} />
               <ReviewBlock label="유리 정산" total={sum(data.yuri)} prev={sum(prevData.yuri)}
                 items={[
-                  { label: '보험', val: sumKeys(data.yuri, ['ins_yuri_total', 'ins_yuri_teeth', 'ins_baby_total', 'ins_baby_silbi']) },
+                  { label: '보험', val: sumKeys(data.yuri, ['ins_yuri_teeth', 'ins_baby_total', 'ins_baby_silbi']) },
                   { label: '택시', val: data.yuri?.taxi || 0 },
                   { label: '통신', val: data.yuri?.telecom || 0 },
                   { label: '교통', val: data.yuri?.transit || 0 },
